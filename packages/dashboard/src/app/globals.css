@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #111827;
+  --bg-card: #1a1f2e;
+  --border: #2a3040;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --accent: #5c7cfa;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+@layer components {
+  .card {
+    @apply bg-[#1a1f2e] border border-[#2a3040] rounded-xl p-6;
+  }
+  .card-header {
+    @apply text-sm font-medium text-slate-400 mb-1;
+  }
+  .card-value {
+    @apply text-2xl font-bold text-white;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-success {
+    @apply bg-emerald-500/20 text-emerald-400;
+  }
+  .badge-error {
+    @apply bg-red-500/20 text-red-400;
+  }
+  .badge-stylus {
+    @apply bg-arcana-500/20 text-arcana-400;
+  }
+}
