@@ -1,45 +1,51 @@
 import type { App } from "../types";
+import type { WebSocket } from "ws";
 import { REDIS_CHANNELS } from "@arcana/shared";
 
 export function registerWsRoutes(app: App) {
-  app.get("/ws", { websocket: true }, (socket, _req) => {
-    const channels = Object.values(REDIS_CHANNELS);
+  // Track all connected WebSocket clients
+  const clients = new Set<WebSocket>();
 
-    // Subscribe to all Redis channels
-    for (const channel of channels) {
-      app.redisSub.subscribe(channel).catch((err: Error) => {
-        app.log.error(`Failed to subscribe to ${channel}: ${err.message}`);
-      });
-    }
+  // Subscribe to Redis channels ONCE at registration time
+  const channels = Object.values(REDIS_CHANNELS);
+  for (const channel of channels) {
+    app.redisSub.subscribe(channel).catch((err: Error) => {
+      app.log.error(`Failed to subscribe to ${channel}: ${err.message}`);
+    });
+  }
 
-    // Forward Redis messages to WebSocket client
-    const messageHandler = (_channel: string, message: string) => {
+  // Forward Redis messages to ALL connected WebSocket clients
+  app.redisSub.on("message", (_channel: string, message: string) => {
+    for (const client of clients) {
       try {
-        if (socket.readyState === 1) {
-          socket.send(message);
+        if (client.readyState === 1) {
+          client.send(message);
         }
       } catch {
-        // Client disconnected
+        // Client disconnected, will be cleaned up on close
       }
-    };
+    }
+  });
 
-    app.redisSub.on("message", messageHandler);
+  app.get("/ws", { websocket: true }, (socket, _req) => {
+    clients.add(socket);
 
     // Send initial connection confirmation
     socket.send(
       JSON.stringify({
         type: "connected",
+        dappId: null,
         data: { message: "Connected to Arcana real-time feed" },
         timestamp: Date.now(),
       }),
     );
 
     socket.on("close", () => {
-      app.redisSub.off("message", messageHandler);
+      clients.delete(socket);
     });
 
     socket.on("error", () => {
-      app.redisSub.off("message", messageHandler);
+      clients.delete(socket);
     });
   });
 }

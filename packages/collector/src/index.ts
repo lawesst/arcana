@@ -62,8 +62,8 @@ async function main() {
       let totalEvents = 0;
       for (const block of blocks) {
         // Process transactions
-        const txCount = await txCollector.processBlock(block);
-        totalTxs += txCount;
+        const processedTxs = await txCollector.processBlock(block);
+        totalTxs += processedTxs.length;
 
         // Process events for monitored dApps
         const eventCount = await eventCollector.processBlock(block);
@@ -71,6 +71,11 @@ async function main() {
 
         // Publish block event
         await publisher.publishBlock(block);
+
+        // Publish each transaction for real-time feed
+        for (const tx of processedTxs) {
+          await publisher.publishTransaction(tx);
+        }
       }
 
       if (totalTxs > 0) {

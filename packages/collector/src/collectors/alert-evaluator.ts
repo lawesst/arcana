@@ -77,7 +77,7 @@ export class AlertEvaluator {
 
       // Publish to Redis for real-time notification
       const payload = JSON.stringify({
-        type: "alert_triggered",
+        type: REDIS_CHANNELS.ALERTS,
         dappId: rule.dappId,
         data: {
           alertId: event.id,

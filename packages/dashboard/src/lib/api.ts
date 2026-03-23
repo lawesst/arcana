@@ -76,9 +76,9 @@ export async function fetchStylusStats() {
 }
 
 // ── Blocks ──
-export async function fetchRecentBlocks(limit = 20) {
+export async function fetchRecentBlocks(limit = 20, offset = 0) {
   return fetchApi<{ success: boolean; data: Block[] }>(
-    `/api/blocks?limit=${limit}`,
+    `/api/blocks?limit=${limit}&offset=${offset}`,
   );
 }
 

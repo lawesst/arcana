@@ -29,12 +29,13 @@ export async function getLatestBlock(db: Database) {
   return results[0] ?? null;
 }
 
-export async function getRecentBlocks(db: Database, limit = 20) {
+export async function getRecentBlocks(db: Database, limit = 20, offset = 0) {
   return db
     .select()
     .from(blocks)
     .orderBy(desc(blocks.blockNumber))
-    .limit(limit);
+    .limit(limit)
+    .offset(offset);
 }
 
 export async function getBlockByNumber(db: Database, blockNumber: number) {

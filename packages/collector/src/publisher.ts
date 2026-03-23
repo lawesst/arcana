@@ -9,7 +9,7 @@ export class Publisher {
   /** Publish a new block event */
   async publishBlock(block: CollectedBlock): Promise<void> {
     const payload = JSON.stringify({
-      type: "new_block",
+      type: REDIS_CHANNELS.BLOCKS,
       dappId: null,
       data: {
         number: block.number,
@@ -29,7 +29,7 @@ export class Publisher {
   async publishMetrics(aggregates: AggregateResult[]): Promise<void> {
     for (const agg of aggregates) {
       const payload = JSON.stringify({
-        type: "metric_update",
+        type: REDIS_CHANNELS.METRICS,
         dappId: agg.dappId,
         data: agg,
         timestamp: Date.now(),
@@ -48,7 +48,7 @@ export class Publisher {
     status: number;
   }): Promise<void> {
     const payload = JSON.stringify({
-      type: "new_transaction",
+      type: REDIS_CHANNELS.TRANSACTIONS,
       dappId: tx.dappId,
       data: tx,
       timestamp: Date.now(),

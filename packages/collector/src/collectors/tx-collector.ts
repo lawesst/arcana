@@ -17,9 +17,9 @@ export class TxCollector {
     private db: Database,
   ) {}
 
-  /** Process all transactions in a collected block */
-  async processBlock(block: CollectedBlock): Promise<number> {
-    if (block.prefetchedTransactions.length === 0) return 0;
+  /** Process all transactions in a collected block, returns processed tx summaries */
+  async processBlock(block: CollectedBlock): Promise<ProcessedTx[]> {
+    if (block.prefetchedTransactions.length === 0) return [];
 
     const txRows = [];
 
@@ -59,7 +59,13 @@ export class TxCollector {
       await insertTransactionsBatch(this.db, txRows);
     }
 
-    return txRows.length;
+    return txRows.map((tx) => ({
+      txHash: tx.txHash,
+      isStylus: tx.isStylus,
+      dappId: tx.dappId,
+      gasUsed: tx.gasUsed.toString(),
+      status: tx.status,
+    }));
   }
 
   /** Check if a contract address is a Stylus (WASM) contract */
@@ -95,4 +101,12 @@ export class TxCollector {
   clearDappCache() {
     dappCache.clear();
   }
+}
+
+export interface ProcessedTx {
+  txHash: string;
+  isStylus: boolean;
+  dappId: string | null;
+  gasUsed: string;
+  status: number;
 }

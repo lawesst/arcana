@@ -69,7 +69,7 @@ export default function ExplorerPage() {
         const res = await fetchTransactions({ limit: PAGE_SIZE, offset: txPage * PAGE_SIZE });
         setTransactions(res.data);
       } else if (tab === "blocks") {
-        const res = await fetchRecentBlocks(PAGE_SIZE);
+        const res = await fetchRecentBlocks(PAGE_SIZE, blockPage * PAGE_SIZE);
         setBlocks(res.data);
       } else {
         const [evRes, namesRes] = await Promise.all([

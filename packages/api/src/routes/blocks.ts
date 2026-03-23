@@ -4,11 +4,12 @@ import { getRecentBlocks, getBlockByNumber, getBlockCount } from "@arcana/db";
 export function registerBlockRoutes(app: App) {
   // Get recent blocks
   app.get<{
-    Querystring: { limit?: number };
+    Querystring: { limit?: number; offset?: number };
   }>("/api/blocks", async (req) => {
     const limit = Math.min(req.query.limit ?? 20, 100);
-    const blocks = await getRecentBlocks(app.db, limit);
-    return { success: true, data: blocks };
+    const offset = req.query.offset ?? 0;
+    const blocks = await getRecentBlocks(app.db, limit, offset);
+    return { success: true, data: blocks, limit, offset };
   });
 
   // Get block by number
