@@ -11,14 +11,23 @@ export class BlockCollector {
 
   /** Get the block number to start collecting from */
   async getStartBlock(): Promise<number> {
-    const latest = await getLatestBlock(this.db);
-    if (latest) return latest.blockNumber + 1;
-
-    // Default: start from the current block
     const currentBlock = await withRetry(
       () => this.provider.getBlockNumber(),
       "getBlockNumber",
     );
+
+    const latest = await getLatestBlock(this.db);
+    if (latest) {
+      // If stored block is ahead of chain (e.g. switched RPCs/chains), reset
+      if (latest.blockNumber > currentBlock) {
+        console.log(
+          `[arcana:collector] DB block ${latest.blockNumber} ahead of chain ${currentBlock}, resetting to current`,
+        );
+        return currentBlock;
+      }
+      return latest.blockNumber + 1;
+    }
+
     return currentBlock;
   }
 
@@ -29,8 +38,8 @@ export class BlockCollector {
   ): Promise<CollectedBlock[]> {
     const blocks: CollectedBlock[] = [];
 
-    // Fetch blocks in parallel (batches of 10)
-    const batchSize = 10;
+    // Fetch blocks in parallel (batches of 5 to avoid rate limiting)
+    const batchSize = 5;
     for (let i = fromBlock; i <= toBlock; i += batchSize) {
       const end = Math.min(i + batchSize - 1, toBlock);
       const promises = [];

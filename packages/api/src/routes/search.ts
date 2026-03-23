@@ -1,7 +1,9 @@
 import type { App } from "../types";
-import { getTransactionByHash, getBlockByNumber } from "@arcana/db";
-import { sql } from "drizzle-orm";
-import { transactions } from "@arcana/db";
+import {
+  getTransactionByHash,
+  getBlockByNumber,
+  getTransactionsByAddress,
+} from "@arcana/db";
 
 export function registerSearchRoutes(app: App) {
   app.get<{
@@ -41,15 +43,7 @@ export function registerSearchRoutes(app: App) {
 
     // Check if it's an address (0x + 40 hex chars) - search for txs from/to
     if (/^0x[0-9a-f]{40}$/.test(query)) {
-      const txs = await app.db
-        .select()
-        .from(transactions)
-        .where(
-          sql`lower(${transactions.fromAddress}) = ${query} or lower(${transactions.toAddress}) = ${query}`,
-        )
-        .orderBy(sql`${transactions.timestamp} desc`)
-        .limit(20);
-
+      const txs = await getTransactionsByAddress(app.db, query);
       return {
         success: true,
         data: {

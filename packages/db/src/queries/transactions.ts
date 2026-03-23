@@ -92,6 +92,22 @@ export async function getTransactionCountSince(
   return result[0].count;
 }
 
+export async function getTransactionsByAddress(
+  db: Database,
+  address: string,
+  limit = 20,
+) {
+  const lower = address.toLowerCase();
+  return db
+    .select()
+    .from(transactions)
+    .where(
+      sql`lower(${transactions.fromAddress}) = ${lower} or lower(${transactions.toAddress}) = ${lower}`,
+    )
+    .orderBy(desc(transactions.timestamp))
+    .limit(limit);
+}
+
 export async function getStylusTransactionCount(db: Database, since?: Date) {
   const conditions = [eq(transactions.isStylus, true)];
   if (since) conditions.push(gte(transactions.timestamp, since));

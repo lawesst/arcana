@@ -34,7 +34,10 @@ async function main() {
   console.log(`[arcana:collector] Starting from block ${lastProcessedBlock}`);
 
   // ── Main collection loop ──
+  let collecting = false;
   async function collectLoop() {
+    if (collecting) return; // prevent concurrent runs
+    collecting = true;
     try {
       const currentBlock = await withRetry(
         () => provider.getBlockNumber(),
@@ -78,15 +81,15 @@ async function main() {
         }
       }
 
-      if (totalTxs > 0) {
-        console.log(
-          `[arcana:collector] Processed ${totalTxs} txs, ${totalEvents} events in ${blocks.length} blocks`,
-        );
-      }
+      console.log(
+        `[arcana:collector] Collected ${blocks.length} blocks (${totalTxs} txs, ${totalEvents} events)`,
+      );
 
       lastProcessedBlock = toBlock + 1;
     } catch (err) {
-      console.error("[arcana:collector] Collection loop error:", err);
+      console.log("[arcana:collector] Collection loop error:", err);
+    } finally {
+      collecting = false;
     }
   }
 
