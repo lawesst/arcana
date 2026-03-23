@@ -7,6 +7,7 @@ import {
   createAlertRule,
   deleteAlertRule,
 } from "@/lib/api";
+import { ErrorState } from "@/components/ErrorState";
 
 interface AlertRule {
   id: string;
@@ -39,6 +40,7 @@ export default function AlertsPage() {
   const [history, setHistory] = useState<AlertEvent[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [metric, setMetric] = useState("gas_usage");
@@ -51,6 +53,7 @@ export default function AlertsPage() {
   }, []);
 
   async function loadData() {
+    setError(null);
     try {
       const [rulesRes, historyRes] = await Promise.all([
         fetchAlertRules(),
@@ -59,7 +62,7 @@ export default function AlertsPage() {
       setRules(rulesRes.data);
       setHistory(historyRes.data);
     } catch (err) {
-      console.error("Failed to load alerts:", err);
+      setError(err instanceof Error ? err.message : "Failed to load alerts");
     } finally {
       setLoading(false);
     }
@@ -173,6 +176,9 @@ export default function AlertsPage() {
       )}
 
       {/* Alert Rules */}
+      {error ? (
+        <ErrorState message={error} onRetry={loadData} />
+      ) : (<>
       <div>
         <h3 className="text-lg font-semibold text-white mb-3">Active Rules</h3>
         {loading ? (
@@ -264,6 +270,7 @@ export default function AlertsPage() {
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }

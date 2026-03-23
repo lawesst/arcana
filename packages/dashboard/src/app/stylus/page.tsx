@@ -8,6 +8,7 @@ import {
   fetchStylusAdoption,
 } from "@/lib/api";
 import { MetricCard } from "@/components/cards/MetricCard";
+import { ErrorState } from "@/components/ErrorState";
 import {
   BarChart,
   Bar,
@@ -75,12 +76,14 @@ export default function StylusPage() {
   const [contracts, setContracts] = useState<StylusContract[]>([]);
   const [adoption, setAdoption] = useState<StylusAdoption | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const ranges = ["1h", "6h", "24h", "7d", "30d"];
 
   useEffect(() => {
     async function load() {
       setLoading(true);
+      setError(null);
       try {
         const [gasRes, tsRes, contractsRes, adoptionRes] = await Promise.all([
           fetchGasComparison(range),
@@ -101,7 +104,7 @@ export default function StylusPage() {
         setContracts(contractsRes.data);
         setAdoption(adoptionRes.data);
       } catch (err) {
-        console.error("Failed to load Stylus data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load Stylus data");
       } finally {
         setLoading(false);
       }
@@ -145,7 +148,9 @@ export default function StylusPage() {
         </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <ErrorState message={error} onRetry={() => { setLoading(true); setError(null); }} />
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="card animate-pulse">

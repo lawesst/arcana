@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { fetchDapp, fetchDappMetrics } from "@/lib/api";
+import { fetchDapp, fetchDappMetrics, fetchEvents } from "@/lib/api";
 import { MetricCard } from "@/components/cards/MetricCard";
 import { GasUsageChart } from "@/components/charts/GasUsageChart";
 import { TxThroughputChart } from "@/components/charts/TxThroughputChart";
 import { ErrorRateChart } from "@/components/charts/ErrorRateChart";
+import { ErrorState } from "@/components/ErrorState";
 import { truncateAddress, EXPLORER_URLS } from "@arcana/shared";
 
 interface DApp {
@@ -16,19 +17,34 @@ interface DApp {
   chainId: number;
 }
 
+interface ContractEvent {
+  id: number;
+  dappId: string;
+  eventName: string;
+  txHash: string;
+  blockNumber: number;
+  logIndex: number;
+  eventData: Record<string, unknown>;
+  timestamp: string;
+}
+
 export default function DAppDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [dapp, setDapp] = useState<DApp | null>(null);
   const [metrics, setMetrics] = useState<MetricData[]>([]);
+  const [events, setEvents] = useState<ContractEvent[]>([]);
   const [range, setRange] = useState("24h");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setError(null);
     try {
-      const [dappRes, metricsRes] = await Promise.all([
+      const [dappRes, metricsRes, eventsRes] = await Promise.all([
         fetchDapp(id),
         fetchDappMetrics(id, range),
+        fetchEvents({ dappId: id, limit: 20 }),
       ]);
       setDapp(dappRes.data);
       setMetrics(
@@ -42,8 +58,9 @@ export default function DAppDetailPage() {
           stylusTxCount: m.stylusTxCount,
         })),
       );
+      setEvents(eventsRes.data);
     } catch (err) {
-      console.error("Failed to load dApp:", err);
+      setError(err instanceof Error ? err.message : "Failed to load dApp");
     } finally {
       setLoading(false);
     }
@@ -60,13 +77,17 @@ export default function DAppDetailPage() {
     return (
       <div className="space-y-6">
         <div className="h-8 bg-slate-800 rounded w-64 animate-pulse"></div>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="card animate-pulse h-24"></div>
           ))}
         </div>
       </div>
     );
+  }
+
+  if (error) {
+    return <ErrorState message={error} onRetry={load} />;
   }
 
   if (!dapp) {
@@ -80,10 +101,10 @@ export default function DAppDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white">{dapp.name}</h2>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             {dapp.contractAddresses.map((addr) => (
               <a
                 key={addr}
@@ -118,19 +139,19 @@ export default function DAppDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Transactions"
-          value={latest?.txCount.toLocaleString() ?? "—"}
+          value={latest?.txCount.toLocaleString() ?? "\u2014"}
         />
         <MetricCard
           title="Avg Gas"
-          value={latest ? `${(latest.gasUsed / 1e6).toFixed(2)}M` : "—"}
+          value={latest ? `${(latest.gasUsed / 1e6).toFixed(2)}M` : "\u2014"}
         />
         <MetricCard
           title="Error Rate"
-          value={latest ? `${latest.errorRate.toFixed(2)}%` : "—"}
+          value={latest ? `${latest.errorRate.toFixed(2)}%` : "\u2014"}
         />
         <MetricCard
           title="Stylus Txs"
-          value={latest?.stylusTxCount.toLocaleString() ?? "—"}
+          value={latest?.stylusTxCount.toLocaleString() ?? "\u2014"}
           highlight
         />
       </div>
@@ -141,6 +162,57 @@ export default function DAppDetailPage() {
         <TxThroughputChart data={metrics} />
       </div>
       <ErrorRateChart data={metrics} />
+
+      {/* Recent Events */}
+      <div className="card overflow-hidden">
+        <h3 className="card-header mb-4">Recent Events</h3>
+        {events.length === 0 ? (
+          <div className="py-8 text-center text-slate-500">
+            No events captured for this dApp yet
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#2a3040]">
+                  <th className="text-left py-2 px-3 text-slate-500 font-medium">Event</th>
+                  <th className="text-left py-2 px-3 text-slate-500 font-medium">Tx Hash</th>
+                  <th className="text-left py-2 px-3 text-slate-500 font-medium">Block</th>
+                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Log #</th>
+                  <th className="text-right py-2 px-3 text-slate-500 font-medium">Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((ev) => (
+                  <tr
+                    key={`${ev.txHash}-${ev.logIndex}`}
+                    className="border-b border-[#2a3040]/50 hover:bg-[#1a1f2e]/50"
+                  >
+                    <td className="py-2.5 px-3">
+                      <span className="badge badge-stylus">{ev.eventName}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <a
+                        href={`${EXPLORER_URLS[42161]}/tx/${ev.txHash}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-arcana-400 hover:text-arcana-300 font-mono"
+                      >
+                        {truncateAddress(ev.txHash, 6)}
+                      </a>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-300 font-mono">{ev.blockNumber}</td>
+                    <td className="py-2.5 px-3 text-right text-slate-300">{ev.logIndex}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-slate-500">
+                      {new Date(ev.timestamp).toLocaleTimeString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

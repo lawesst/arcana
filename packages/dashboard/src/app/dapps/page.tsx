@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { fetchDapps, createDapp } from "@/lib/api";
 import { truncateAddress, EXPLORER_URLS } from "@arcana/shared";
+import { ErrorState } from "@/components/ErrorState";
 
 interface DApp {
   id: string;
@@ -15,6 +16,7 @@ interface DApp {
 export default function DAppsPage() {
   const [dapps, setDapps] = useState<DApp[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [addresses, setAddresses] = useState("");
@@ -24,11 +26,12 @@ export default function DAppsPage() {
   }, []);
 
   async function loadDapps() {
+    setError(null);
     try {
       const res = await fetchDapps();
       setDapps(res.data);
     } catch (err) {
-      console.error("Failed to load dApps:", err);
+      setError(err instanceof Error ? err.message : "Failed to load dApps");
     } finally {
       setLoading(false);
     }
@@ -104,7 +107,9 @@ export default function DAppsPage() {
       )}
 
       {/* dApp list */}
-      {loading ? (
+      {error ? (
+        <ErrorState message={error} onRetry={loadDapps} />
+      ) : loading ? (
         <div className="space-y-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card animate-pulse">
