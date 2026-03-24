@@ -86,6 +86,16 @@ async function main() {
       );
 
       lastProcessedBlock = toBlock + 1;
+
+      // Trigger a quick 5m aggregation after collecting so metrics update promptly
+      if (totalTxs > 0) {
+        const dapps = await getAllDapps(db);
+        const dappIds = dapps.map((d) => d.id);
+        const results = await aggregator.computeAll("5m", dappIds);
+        if (results.length > 0) {
+          await publisher.publishMetrics(results);
+        }
+      }
     } catch (err) {
       console.log("[arcana:collector] Collection loop error:", err);
     } finally {
