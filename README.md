@@ -95,6 +95,47 @@ pnpm db:migrate
 pnpm dev
 ```
 
+## Staging Deployment
+
+Arcana can be deployed as a multi-container staging stack with Docker Compose.
+
+### 1. Create a staging env file
+
+```bash
+cp .env.staging.example .env.staging
+```
+
+Update `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` to the public API origin your staging users will reach in the browser. If you are testing on a single host first, the default `localhost` values are fine.
+If you want to publish the API on a different host port without changing the container's internal bind port, change `API_PUBLIC_PORT`.
+
+### 2. Build and start the staging stack
+
+```bash
+pnpm staging:up
+```
+
+This starts:
+
+- PostgreSQL
+- Redis
+- the migration job
+- the Fastify API
+- the collector
+- the Next.js dashboard
+
+### 3. Inspect the stack
+
+```bash
+pnpm staging:ps
+pnpm staging:logs
+```
+
+### 4. Shut it down
+
+```bash
+pnpm staging:down
+```
+
 ## Useful Scripts
 
 ```bash
@@ -104,6 +145,10 @@ pnpm dev:api          # api only
 pnpm dev:dashboard    # dashboard only
 pnpm build            # build all packages
 pnpm lint             # typecheck all packages
+pnpm staging:up       # build and start the staging docker-compose stack
+pnpm staging:down     # stop the staging docker-compose stack
+pnpm staging:logs     # tail staging service logs
+pnpm staging:ps       # show staging service status
 pnpm test:e2e         # seed data, build, and run Playwright smoke tests
 pnpm db:migrate       # apply database migrations
 ```
@@ -122,6 +167,7 @@ pnpm db:migrate       # apply database migrations
 - Arcana is currently optimized for Arbitrum One.
 - Historical data appears gradually when a new monitored dApp is added because the collector performs a background backfill.
 - A Playwright smoke suite covers the core browser flows and runs automatically on pushes and pull requests through GitHub Actions.
+- The Docker staging stack builds all app services from the monorepo and runs migrations automatically before the API and collector start.
 
 ## License
 

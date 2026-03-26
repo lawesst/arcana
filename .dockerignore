@@ -1,0 +1,15 @@
+node_modules
+.git
+.github
+.next
+.turbo
+dist
+coverage
+playwright-report
+test-results
+*.log
+.env
+.env.local
+.env.staging
+packages/dashboard/.next
+packages/dashboard/.next.broken.*
