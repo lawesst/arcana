@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { dapps } from "./dapps";
 
 export const metricAggregates = pgTable(
@@ -32,7 +33,10 @@ export const metricAggregates = pgTable(
       table.dappId,
       table.window,
       table.windowStart,
-    ),
+    ).where(sql`${table.dappId} is not null`),
+    uniqueIndex("idx_agg_global_window_start")
+      .on(table.window, table.windowStart)
+      .where(sql`${table.dappId} is null`),
     index("idx_agg_window_start").on(table.window, table.windowStart),
   ],
 );

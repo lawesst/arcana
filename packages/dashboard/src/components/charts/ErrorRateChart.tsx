@@ -21,15 +21,18 @@ export function ErrorRateChart({ data }: ErrorRateChartProps) {
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(60, 73, 78, 0.35)"
+            />
             <XAxis
               dataKey="time"
-              stroke="#64748b"
+              stroke="#859399"
               fontSize={11}
               tickLine={false}
             />
             <YAxis
-              stroke="#64748b"
+              stroke="#859399"
               fontSize={11}
               tickLine={false}
               domain={[0, "auto"]}
@@ -37,20 +40,20 @@ export function ErrorRateChart({ data }: ErrorRateChartProps) {
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a1f2e",
-                border: "1px solid #2a3040",
-                borderRadius: "8px",
-                color: "#f1f5f9",
+                backgroundColor: "rgba(22, 29, 31, 0.92)",
+                border: "1px solid rgba(60, 73, 78, 0.24)",
+                borderRadius: "16px",
+                color: "#dde3e7",
               }}
               formatter={(value: number) => [`${value.toFixed(2)}%`, "Error Rate"]}
             />
             <Line
               type="monotone"
               dataKey="errorRate"
-              stroke="#f87171"
+              stroke="#ffb4ab"
               strokeWidth={2}
               dot={false}
-              activeDot={{ r: 4, fill: "#f87171" }}
+              activeDot={{ r: 4, fill: "#ffb4ab" }}
             />
           </LineChart>
         </ResponsiveContainer>

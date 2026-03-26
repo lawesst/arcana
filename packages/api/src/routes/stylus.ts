@@ -4,23 +4,9 @@ import {
   getGasComparisonTimeSeries,
   getTopStylusContracts,
   getStylusAdoptionStats,
+  getLatestTransactionTimestamp,
 } from "@arcana/db";
-
-const RANGE_TO_MS: Record<string, number> = {
-  "1h": 60 * 60 * 1000,
-  "6h": 6 * 60 * 60 * 1000,
-  "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "30d": 30 * 24 * 60 * 60 * 1000,
-};
-
-const RANGE_TO_BUCKET: Record<string, number> = {
-  "1h": 5,
-  "6h": 15,
-  "24h": 60,
-  "7d": 360,
-  "30d": 1440,
-};
+import { getAnchoredSince, resolveRange } from "../range-anchor";
 
 export function registerStylusRoutes(app: App) {
   // Gas comparison: Stylus vs EVM
@@ -28,7 +14,26 @@ export function registerStylusRoutes(app: App) {
     Querystring: { range?: string };
   }>("/api/stylus/gas-comparison", async (req) => {
     const range = req.query.range || "24h";
-    const since = new Date(Date.now() - (RANGE_TO_MS[range] || RANGE_TO_MS["24h"]));
+    const anchor = await getLatestTransactionTimestamp(app.db);
+    if (!anchor) {
+      return {
+        success: true,
+        data: {
+          stylusAvgGas: 0,
+          evmAvgGas: 0,
+          stylusTotalGas: "0",
+          evmTotalGas: "0",
+          stylusCount: 0,
+          evmCount: 0,
+          stylusAvgGasPrice: 0,
+          evmAvgGasPrice: 0,
+          gasSavingsPercent: "0",
+        },
+      };
+    }
+
+    const { rangeMs } = resolveRange(range);
+    const since = getAnchoredSince(anchor, rangeMs);
 
     const comparison = await getGasComparison(app.db, since);
 
@@ -60,8 +65,15 @@ export function registerStylusRoutes(app: App) {
     Querystring: { range?: string };
   }>("/api/stylus/gas-comparison/timeseries", async (req) => {
     const range = req.query.range || "24h";
-    const since = new Date(Date.now() - (RANGE_TO_MS[range] || RANGE_TO_MS["24h"]));
-    const bucketMinutes = RANGE_TO_BUCKET[range] || 60;
+    const anchor = await getLatestTransactionTimestamp(app.db);
+    if (!anchor) {
+      return { success: true, data: [] };
+    }
+
+    const { rangeMs, bucketMinutes } = resolveRange(range);
+    const bucketMs = bucketMinutes * 60 * 1000;
+    const bucketStart = floorToBucket(anchor, bucketMs);
+    const since = getAnchoredSince(bucketStart, rangeMs, bucketMs);
 
     const series = await getGasComparisonTimeSeries(app.db, {
       since,
@@ -70,13 +82,20 @@ export function registerStylusRoutes(app: App) {
 
     return {
       success: true,
-      data: series.map((row) => ({
-        time: row.bucket,
-        stylusAvgGas: parseFloat(row.stylus_avg_gas),
-        evmAvgGas: parseFloat(row.evm_avg_gas),
-        stylusCount: parseInt(row.stylus_count),
-        evmCount: parseInt(row.evm_count),
-      })),
+      data: fillGasComparisonSeries(
+        series.map((row) => ({
+          time: row.bucket,
+          stylusAvgGas: parseFloat(row.stylus_avg_gas),
+          evmAvgGas: parseFloat(row.evm_avg_gas),
+          stylusCount: parseInt(row.stylus_count),
+          evmCount: parseInt(row.evm_count),
+        })),
+        {
+          since,
+          until: bucketStart,
+          bucketMs,
+        },
+      ),
     };
   });
 
@@ -85,7 +104,13 @@ export function registerStylusRoutes(app: App) {
     Querystring: { range?: string; limit?: number };
   }>("/api/stylus/contracts", async (req) => {
     const range = req.query.range || "24h";
-    const since = new Date(Date.now() - (RANGE_TO_MS[range] || RANGE_TO_MS["24h"]));
+    const anchor = await getLatestTransactionTimestamp(app.db);
+    if (!anchor) {
+      return { success: true, data: [] };
+    }
+
+    const { rangeMs } = resolveRange(range);
+    const since = getAnchoredSince(anchor, rangeMs);
 
     const contracts = await getTopStylusContracts(app.db, {
       since,
@@ -100,7 +125,25 @@ export function registerStylusRoutes(app: App) {
     Querystring: { range?: string };
   }>("/api/stylus/adoption", async (req) => {
     const range = req.query.range || "24h";
-    const since = new Date(Date.now() - (RANGE_TO_MS[range] || RANGE_TO_MS["24h"]));
+    const anchor = await getLatestTransactionTimestamp(app.db);
+    if (!anchor) {
+      return {
+        success: true,
+        data: {
+          totalTxs: 0,
+          stylusTxs: 0,
+          evmTxs: 0,
+          stylusRatio: "0",
+          stylusContracts: 0,
+          evmContracts: 0,
+          stylusErrorRate: "0.00",
+          evmErrorRate: "0.00",
+        },
+      };
+    }
+
+    const { rangeMs } = resolveRange(range);
+    const since = getAnchoredSince(anchor, rangeMs);
 
     const stats = await getStylusAdoptionStats(app.db, since);
 
@@ -121,4 +164,47 @@ export function registerStylusRoutes(app: App) {
       },
     };
   });
+}
+
+function floorToBucket(date: Date, bucketMs: number) {
+  return new Date(Math.floor(date.getTime() / bucketMs) * bucketMs);
+}
+
+function fillGasComparisonSeries(
+  rows: Array<{
+    time: string;
+    stylusAvgGas: number;
+    evmAvgGas: number;
+    stylusCount: number;
+    evmCount: number;
+  }>,
+  opts: {
+    since: Date;
+    until: Date;
+    bucketMs: number;
+  },
+) {
+  const existing = new Map(
+    rows.map((row) => [new Date(row.time).toISOString(), row]),
+  );
+  const filled = [];
+
+  for (
+    let cursor = new Date(opts.since);
+    cursor.getTime() <= opts.until.getTime();
+    cursor = new Date(cursor.getTime() + opts.bucketMs)
+  ) {
+    const key = cursor.toISOString();
+    filled.push(
+      existing.get(key) ?? {
+        time: cursor.toISOString(),
+        stylusAvgGas: 0,
+        evmAvgGas: 0,
+        stylusCount: 0,
+        evmCount: 0,
+      },
+    );
+  }
+
+  return filled;
 }

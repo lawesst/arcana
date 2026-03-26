@@ -8,7 +8,7 @@ import type { CollectedBlock } from "./block-collector";
 // Cache: address -> isStylus. Avoids repeated eth_getCode calls.
 const stylusCache = new Map<string, boolean>();
 
-// Cache: address -> dappId
+// Cache: address -> dappId for known monitored contracts
 const dappCache = new Map<string, string | null>();
 
 export class TxCollector {
@@ -35,8 +35,8 @@ export class TxCollector {
       // Check if target contract is a Stylus contract
       const isStylus = tx.to ? await this.checkStylus(tx.to) : false;
 
-      // Match to a monitored dApp
-      const dappId = tx.to ? await this.matchDapp(tx.to) : null;
+      // Match to a monitored dApp, falling back to monitored log addresses.
+      const dappId = await this.matchTransactionToDapp(tx.to, receipt.logs);
 
       txRows.push({
         txHash: tx.hash,
@@ -68,6 +68,30 @@ export class TxCollector {
     }));
   }
 
+  private async matchTransactionToDapp(
+    toAddress: string | null,
+    logs: readonly ethers.Log[],
+  ): Promise<string | null> {
+    if (toAddress) {
+      const directMatch = await this.matchDapp(toAddress);
+      if (directMatch) {
+        return directMatch;
+      }
+    }
+
+    const logMatches = new Set<string>();
+    for (const log of logs) {
+      const dappId = await this.matchDapp(log.address);
+      if (!dappId) continue;
+      logMatches.add(dappId);
+      if (logMatches.size > 1) {
+        return null;
+      }
+    }
+
+    return Array.from(logMatches)[0] ?? null;
+  }
+
   /** Check if a contract address is a Stylus (WASM) contract */
   private async checkStylus(address: string): Promise<boolean> {
     const lower = address.toLowerCase();
@@ -92,9 +116,9 @@ export class TxCollector {
     if (dappCache.has(lower)) return dappCache.get(lower)!;
 
     const dapp = await getDappByAddress(this.db, address);
-    const id = dapp?.id ?? null;
-    dappCache.set(lower, id);
-    return id;
+    const dappId = dapp?.id ?? null;
+    dappCache.set(lower, dappId);
+    return dappId;
   }
 
   /** Clear caches (call when dApps are added/removed) */

@@ -1,5 +1,10 @@
 import type { App } from "../types";
-import { getEvents, getEventNames, getEventCountSince } from "@arcana/db";
+import {
+  getEvents,
+  getEventNames,
+  getEventCountSince,
+  getLatestEventTimestamp,
+} from "@arcana/db";
 
 export function registerEventRoutes(app: App) {
   // List events with filters
@@ -34,8 +39,16 @@ export function registerEventRoutes(app: App) {
 
   // Get event count stats
   app.get("/api/events/stats", async () => {
-    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const last1h = new Date(Date.now() - 60 * 60 * 1000);
+    const anchor = await getLatestEventTimestamp(app.db);
+    if (!anchor) {
+      return {
+        success: true,
+        data: { total: 0, last24h: 0, last1h: 0 },
+      };
+    }
+
+    const last24h = new Date(anchor.getTime() - 24 * 60 * 60 * 1000);
+    const last1h = new Date(anchor.getTime() - 60 * 60 * 1000);
 
     const [total, last24hCount, last1hCount] = await Promise.all([
       getEventCountSince(app.db, new Date(0)),

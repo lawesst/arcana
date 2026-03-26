@@ -5,6 +5,7 @@ import type Redis from "ioredis";
 declare module "fastify" {
   interface FastifyInstance {
     db: Database;
+    redisPub: Redis;
     redisSub: Redis;
   }
 }

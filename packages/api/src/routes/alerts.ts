@@ -5,7 +5,18 @@ import {
   deleteAlertRule,
   toggleAlertRule,
   getAlertHistory,
+  getDappById,
 } from "@arcana/db";
+
+const ALERT_METRICS = new Set([
+  "gas_usage",
+  "error_rate",
+  "tx_throughput",
+  "tx_speed",
+  "stylus_ratio",
+]);
+const ALERT_CONDITIONS = new Set(["above", "below"]);
+const ALERT_WINDOWS = new Set(["5m", "1h", "24h"]);
 
 export function registerAlertRoutes(app: App) {
   // List alert rules
@@ -33,6 +44,39 @@ export function registerAlertRoutes(app: App) {
       return reply
         .status(400)
         .send({ success: false, error: "metric, condition, threshold, and window are required" });
+    }
+
+    if (!ALERT_METRICS.has(metric)) {
+      return reply
+        .status(400)
+        .send({ success: false, error: "Unsupported alert metric" });
+    }
+
+    if (!ALERT_CONDITIONS.has(condition)) {
+      return reply
+        .status(400)
+        .send({ success: false, error: "Unsupported alert condition" });
+    }
+
+    if (!ALERT_WINDOWS.has(window)) {
+      return reply
+        .status(400)
+        .send({ success: false, error: "Unsupported alert window" });
+    }
+
+    if (!Number.isFinite(threshold)) {
+      return reply
+        .status(400)
+        .send({ success: false, error: "Threshold must be a valid number" });
+    }
+
+    if (req.body.dappId) {
+      const dapp = await getDappById(app.db, req.body.dappId);
+      if (!dapp) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "Selected dApp was not found" });
+      }
     }
 
     const rule = await createAlertRule(app.db, {

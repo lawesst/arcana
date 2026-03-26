@@ -1,9 +1,11 @@
 node_modules/
 dist/
 .next/
+.next.broken.*/
 .env
 .env.local
 *.log
 .DS_Store
 .turbo/
 coverage/
+*.tsbuildinfo

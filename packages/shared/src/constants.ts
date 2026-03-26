@@ -36,6 +36,11 @@ export const REDIS_CHANNELS = {
   ALERTS: "arcana:alerts",
 } as const;
 
+/** Internal Redis channels for service coordination */
+export const INTERNAL_REDIS_CHANNELS = {
+  DAPPS: "arcana:internal:dapps",
+} as const;
+
 /** Default collector settings */
 export const COLLECTOR_DEFAULTS = {
   POLL_INTERVAL_MS: 1000,

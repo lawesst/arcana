@@ -100,3 +100,21 @@ export async function getEventCountSince(
     .where(and(...conditions));
   return result[0].count;
 }
+
+export async function getLatestEventTimestamp(
+  db: Database,
+  dappId?: string,
+) {
+  const conditions = dappId
+    ? [eq(contractEvents.dappId, dappId)]
+    : [];
+
+  const result = await db
+    .select({
+      timestamp: sql<string | null>`max(${contractEvents.timestamp})`,
+    })
+    .from(contractEvents)
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+  return result[0].timestamp ? new Date(result[0].timestamp) : null;
+}

@@ -50,7 +50,9 @@ export function RecentTxTable() {
   if (error) {
     return (
       <div>
-        <h3 className="text-lg font-semibold text-white mb-3">Recent Transactions</h3>
+        <h3 className="mb-3 text-lg font-extrabold text-[#dde3e7]">
+          Recent Transactions
+        </h3>
         <ErrorState message={error} onRetry={load} />
       </div>
     );
@@ -60,45 +62,45 @@ export function RecentTxTable() {
     <div className="card overflow-hidden">
       <h3 className="card-header mb-4">Recent Transactions</h3>
       {transactions.length === 0 ? (
-        <div className="py-8 text-center text-slate-500">
+        <div className="py-8 text-center text-[#859399]">
           No transactions indexed yet
         </div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#2a3040]">
-                <th className="text-left py-2 px-3 text-slate-500 font-medium">Hash</th>
-                <th className="text-left py-2 px-3 text-slate-500 font-medium">Block</th>
-                <th className="text-left py-2 px-3 text-slate-500 font-medium">From</th>
-                <th className="text-left py-2 px-3 text-slate-500 font-medium">To</th>
-                <th className="text-right py-2 px-3 text-slate-500 font-medium">Gas</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-medium">Status</th>
-                <th className="text-center py-2 px-3 text-slate-500 font-medium">Type</th>
+              <tr className="border-b border-[#3c494e]/30">
+                <th className="px-3 py-2 text-left font-medium text-[#859399]">Hash</th>
+                <th className="px-3 py-2 text-left font-medium text-[#859399]">Block</th>
+                <th className="px-3 py-2 text-left font-medium text-[#859399]">From</th>
+                <th className="px-3 py-2 text-left font-medium text-[#859399]">To</th>
+                <th className="px-3 py-2 text-right font-medium text-[#859399]">Gas</th>
+                <th className="px-3 py-2 text-center font-medium text-[#859399]">Status</th>
+                <th className="px-3 py-2 text-center font-medium text-[#859399]">Type</th>
               </tr>
             </thead>
             <tbody>
               {transactions.map((tx) => (
                 <tr
                   key={tx.txHash}
-                  className="border-b border-[#2a3040]/50 hover:bg-[#1a1f2e]/50 transition-colors"
+                  className="border-b border-[#3c494e]/20 transition-colors hover:bg-[#1a2123]/70"
                 >
                   <td className="py-2.5 px-3">
                     <a
                       href={`${EXPLORER_URLS[42161]}/tx/${tx.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-arcana-400 hover:text-arcana-300 font-mono"
+                      className="font-mono text-[#a4e6ff] hover:text-[#00d1ff]"
                     >
                       {truncateAddress(tx.txHash, 6)}
                     </a>
                   </td>
-                  <td className="py-2.5 px-3 text-slate-300 font-mono">{tx.blockNumber}</td>
-                  <td className="py-2.5 px-3 font-mono text-slate-400">{truncateAddress(tx.fromAddress)}</td>
-                  <td className="py-2.5 px-3 font-mono text-slate-400">
+                  <td className="py-2.5 px-3 font-mono text-[#dde3e7]">{tx.blockNumber}</td>
+                  <td className="py-2.5 px-3 font-mono text-[#bbc9cf]">{truncateAddress(tx.fromAddress)}</td>
+                  <td className="py-2.5 px-3 font-mono text-[#bbc9cf]">
                     {tx.toAddress ? truncateAddress(tx.toAddress) : "\u2014"}
                   </td>
-                  <td className="py-2.5 px-3 text-right text-slate-300 font-mono">
+                  <td className="py-2.5 px-3 text-right font-mono text-[#dde3e7]">
                     {parseInt(tx.gasUsed).toLocaleString()}
                   </td>
                   <td className="py-2.5 px-3 text-center">
@@ -112,7 +114,7 @@ export function RecentTxTable() {
                     {tx.isStylus ? (
                       <span className="badge badge-stylus">Stylus</span>
                     ) : (
-                      <span className="badge bg-slate-700/50 text-slate-400">EVM</span>
+                      <span className="badge">EVM</span>
                     )}
                   </td>
                 </tr>

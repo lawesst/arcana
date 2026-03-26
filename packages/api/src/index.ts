@@ -38,11 +38,13 @@ async function main() {
   // Database
   const { db } = createDb(env.DATABASE_URL);
 
-  // Redis (subscriber for WebSocket fan-out)
+  // Redis (publisher for internal notifications, subscriber for WebSocket fan-out)
+  const redisPub = new Redis(env.REDIS_URL);
   const redisSub = new Redis(env.REDIS_URL);
 
   // Decorate Fastify with shared instances
   app.decorate("db", db);
+  app.decorate("redisPub", redisPub);
   app.decorate("redisSub", redisSub);
 
   // Routes
@@ -64,6 +66,7 @@ async function main() {
   // Graceful shutdown
   const shutdown = async () => {
     console.log("\n[arcana:api] Shutting down...");
+    redisPub.disconnect();
     redisSub.disconnect();
     await app.close();
     process.exit(0);

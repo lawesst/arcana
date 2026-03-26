@@ -118,3 +118,21 @@ export async function getStylusTransactionCount(db: Database, since?: Date) {
     .where(and(...conditions));
   return result[0].count;
 }
+
+export async function getLatestTransactionTimestamp(
+  db: Database,
+  dappId?: string,
+) {
+  const conditions = dappId
+    ? [eq(transactions.dappId, dappId)]
+    : [];
+
+  const result = await db
+    .select({
+      timestamp: sql<string | null>`max(${transactions.timestamp})`,
+    })
+    .from(transactions)
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+
+  return result[0].timestamp ? new Date(result[0].timestamp) : null;
+}

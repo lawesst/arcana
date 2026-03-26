@@ -8,7 +8,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Cell,
 } from "recharts";
 
 interface TxThroughputChartProps {
@@ -16,40 +15,60 @@ interface TxThroughputChartProps {
 }
 
 export function TxThroughputChart({ data }: TxThroughputChartProps) {
+  const chartData = data.map((point) => ({
+    ...point,
+    evmTxCount: Math.max(point.txCount - point.stylusTxCount, 0),
+  }));
+
   return (
     <div className="card">
       <h3 className="card-header mb-4">Transaction Throughput</h3>
       <div className="flex items-center gap-4 mb-3">
         <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm bg-arcana-500"></span>
-          <span className="text-xs text-slate-400">Stylus</span>
+          <span className="w-3 h-3 rounded-sm bg-[#00d1ff]"></span>
+          <span className="text-xs text-[#bbc9cf]">Stylus</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded-sm bg-slate-600"></span>
-          <span className="text-xs text-slate-400">EVM</span>
+          <span className="w-3 h-3 rounded-sm bg-[#475569]"></span>
+          <span className="text-xs text-[#bbc9cf]">EVM</span>
         </div>
       </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3040" />
+          <BarChart data={chartData}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="rgba(60, 73, 78, 0.35)"
+            />
             <XAxis
               dataKey="time"
-              stroke="#64748b"
+              stroke="#859399"
               fontSize={11}
               tickLine={false}
             />
-            <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+            <YAxis stroke="#859399" fontSize={11} tickLine={false} />
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a1f2e",
-                border: "1px solid #2a3040",
-                borderRadius: "8px",
-                color: "#f1f5f9",
+                backgroundColor: "rgba(22, 29, 31, 0.92)",
+                border: "1px solid rgba(60, 73, 78, 0.24)",
+                borderRadius: "16px",
+                color: "#dde3e7",
               }}
             />
-            <Bar dataKey="txCount" stackId="a" fill="#475569" radius={[0, 0, 0, 0]} name="Total Txs" />
-            <Bar dataKey="stylusTxCount" stackId="b" fill="#5c7cfa" radius={[2, 2, 0, 0]} name="Stylus Txs" />
+            <Bar
+              dataKey="evmTxCount"
+              stackId="txs"
+              fill="#475569"
+              radius={[0, 0, 0, 0]}
+              name="EVM Txs"
+            />
+            <Bar
+              dataKey="stylusTxCount"
+              stackId="txs"
+              fill="#5c7cfa"
+              radius={[2, 2, 0, 0]}
+              name="Stylus Txs"
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>

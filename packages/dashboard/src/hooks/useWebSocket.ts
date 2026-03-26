@@ -24,13 +24,20 @@ interface WsHandlers {
 export function useWebSocket(handlers?: WsHandlers) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
+  const disposedRef = useRef(false);
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (disposedRef.current) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
     const ws = new WebSocket(`${WS_URL}/ws`);
 
@@ -68,7 +75,11 @@ export function useWebSocket(handlers?: WsHandlers) {
 
     ws.onclose = () => {
       setConnected(false);
+      wsRef.current = null;
+      if (disposedRef.current) return;
+
       reconnectTimer.current = setTimeout(() => {
+        if (disposedRef.current) return;
         reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30000);
         connect();
       }, reconnectDelay.current);
@@ -82,11 +93,16 @@ export function useWebSocket(handlers?: WsHandlers) {
   }, []);
 
   useEffect(() => {
+    disposedRef.current = false;
     connect();
 
     return () => {
-      clearTimeout(reconnectTimer.current);
+      disposedRef.current = true;
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+      }
       wsRef.current?.close();
+      wsRef.current = null;
     };
   }, [connect]);
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { fetchDapps, createDapp } from "@/lib/api";
-import { truncateAddress, EXPLORER_URLS } from "@arcana/shared";
+import { truncateAddress } from "@arcana/shared";
 import { ErrorState } from "@/components/ErrorState";
 
 interface DApp {
@@ -20,12 +20,16 @@ export default function DAppsPage() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [addresses, setAddresses] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     loadDapps();
   }, []);
 
   async function loadDapps() {
+    setLoading(true);
     setError(null);
     try {
       const res = await fetchDapps();
@@ -40,17 +44,41 @@ export default function DAppsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const contractAddresses = addresses
-      .split(",")
+      .split(/[\n,]+/)
       .map((a) => a.trim())
       .filter(Boolean);
 
-    if (!name || contractAddresses.length === 0) return;
+    if (!name.trim()) {
+      setFormError("Enter a name for the dApp you want to monitor.");
+      return;
+    }
 
-    await createDapp({ name, contractAddresses });
-    setName("");
-    setAddresses("");
-    setShowForm(false);
-    loadDapps();
+    if (contractAddresses.length === 0) {
+      setFormError("Add at least one contract address to monitor.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    setFormSuccess(null);
+
+    try {
+      const res = await createDapp({
+        name: name.trim(),
+        contractAddresses,
+      });
+      setName("");
+      setAddresses("");
+      setShowForm(false);
+      setFormSuccess(`Now monitoring ${res.data.name}.`);
+      await loadDapps();
+    } catch (err) {
+      setFormError(
+        err instanceof Error ? err.message : "Failed to register dApp",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -82,28 +110,45 @@ export default function DAppsPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Stylus dApp"
+              disabled={submitting}
               className="w-full bg-[#0a0e1a] border border-[#2a3040] rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-arcana-500"
             />
           </div>
           <div>
             <label className="block text-sm text-slate-400 mb-1">
-              Contract Addresses (comma-separated)
+              Contract Addresses (comma or newline-separated)
             </label>
-            <input
-              type="text"
+            <textarea
               value={addresses}
               onChange={(e) => setAddresses(e.target.value)}
-              placeholder="0x1234..., 0x5678..."
+              placeholder="0x1234..., 0x5678... or one per line"
+              disabled={submitting}
+              rows={4}
               className="w-full bg-[#0a0e1a] border border-[#2a3040] rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-arcana-500"
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Duplicate and invalid addresses are rejected automatically.
+            </p>
           </div>
+          {formError && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {formError}
+            </div>
+          )}
           <button
             type="submit"
-            className="px-4 py-2 bg-arcana-600 text-white rounded-lg text-sm font-medium hover:bg-arcana-700"
+            disabled={submitting}
+            className="px-4 py-2 bg-arcana-600 text-white rounded-lg text-sm font-medium hover:bg-arcana-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Register dApp
+            {submitting ? "Registering..." : "Register dApp"}
           </button>
         </form>
+      )}
+
+      {formSuccess && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+          {formSuccess}
+        </div>
       )}
 
       {/* dApp list */}

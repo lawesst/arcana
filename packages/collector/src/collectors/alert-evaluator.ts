@@ -4,6 +4,7 @@ import {
   getLastAlertForRule,
   insertAlertEvent,
   getLatestAggregate,
+  resolveAlert,
 } from "@arcana/db";
 import type { AlertMetric } from "@arcana/shared";
 import type Redis from "ioredis";
@@ -37,14 +38,6 @@ export class AlertEvaluator {
     window: string;
     cooldownMinutes: number;
   }): Promise<void> {
-    // Check cooldown
-    const lastAlert = await getLastAlertForRule(this.db, rule.id);
-    if (lastAlert) {
-      const cooldownMs = rule.cooldownMinutes * 60 * 1000;
-      const elapsed = Date.now() - new Date(lastAlert.triggeredAt).getTime();
-      if (elapsed < cooldownMs) return;
-    }
-
     // Get latest aggregate for this rule's window
     const aggregate = await getLatestAggregate(this.db, {
       dappId: rule.dappId,
@@ -61,6 +54,7 @@ export class AlertEvaluator {
     if (metricValue === null) return;
 
     const threshold = parseFloat(rule.threshold);
+    const lastAlert = await getLastAlertForRule(this.db, rule.id);
 
     // Check condition
     const triggered =
@@ -69,6 +63,16 @@ export class AlertEvaluator {
         : metricValue < threshold;
 
     if (triggered) {
+      if (lastAlert && !lastAlert.resolvedAt) {
+        return;
+      }
+
+      if (lastAlert) {
+        const cooldownMs = rule.cooldownMinutes * 60 * 1000;
+        const elapsed = Date.now() - new Date(lastAlert.triggeredAt).getTime();
+        if (elapsed < cooldownMs) return;
+      }
+
       const event = await insertAlertEvent(this.db, {
         ruleId: rule.id,
         metricValue: metricValue.toString(),
@@ -84,6 +88,7 @@ export class AlertEvaluator {
           ruleId: rule.id,
           metric: rule.metric,
           condition: rule.condition,
+          status: "triggered",
           metricValue,
           threshold,
         },
@@ -94,6 +99,33 @@ export class AlertEvaluator {
 
       console.log(
         `[alert] Rule ${rule.id} triggered: ${rule.metric} ${rule.condition} ${threshold} (actual: ${metricValue})`,
+      );
+
+      return;
+    }
+
+    if (lastAlert && !lastAlert.resolvedAt) {
+      await resolveAlert(this.db, lastAlert.id);
+
+      const payload = JSON.stringify({
+        type: REDIS_CHANNELS.ALERTS,
+        dappId: rule.dappId,
+        data: {
+          alertId: lastAlert.id,
+          ruleId: rule.id,
+          metric: rule.metric,
+          condition: rule.condition,
+          status: "resolved",
+          metricValue,
+          threshold,
+        },
+        timestamp: Date.now(),
+      });
+
+      await this.redis.publish(REDIS_CHANNELS.ALERTS, payload);
+
+      console.log(
+        `[alert] Rule ${rule.id} resolved: ${rule.metric} back within threshold (actual: ${metricValue})`,
       );
     }
   }

@@ -3,6 +3,9 @@ import type { Database } from "@arcana/db";
 import { insertBlock, getLatestBlock } from "@arcana/db";
 import { withRetry } from "../provider";
 
+const STALE_HEAD_LAG_MS = 15 * 60 * 1000;
+const RECOVERY_LOOKBACK_BLOCKS = 1200;
+
 export class BlockCollector {
   constructor(
     private provider: ethers.JsonRpcProvider,
@@ -15,20 +18,42 @@ export class BlockCollector {
       () => this.provider.getBlockNumber(),
       "getBlockNumber",
     );
+    const recoveryStart = Math.max(currentBlock - RECOVERY_LOOKBACK_BLOCKS, 0);
 
     const latest = await getLatestBlock(this.db);
-    if (latest) {
-      // If stored block is ahead of chain (e.g. switched RPCs/chains), reset
-      if (latest.blockNumber > currentBlock) {
-        console.log(
-          `[arcana:collector] DB block ${latest.blockNumber} ahead of chain ${currentBlock}, resetting to current`,
-        );
-        return currentBlock;
-      }
-      return latest.blockNumber + 1;
+    if (!latest) {
+      console.log(
+        `[arcana:collector] No stored block head, starting from recent window at ${recoveryStart}`,
+      );
+      return recoveryStart;
     }
 
-    return currentBlock;
+    // If stored block is ahead of chain (e.g. switched RPCs/chains), reset
+    if (latest.blockNumber > currentBlock) {
+      console.log(
+        `[arcana:collector] DB block ${latest.blockNumber} ahead of chain ${currentBlock}, resetting to current`,
+      );
+      return recoveryStart;
+    }
+
+    const chainHead = await withRetry(
+      () => this.provider.getBlock(currentBlock),
+      `getBlock(${currentBlock})`,
+    );
+
+    if (chainHead) {
+      const lagMs = chainHead.timestamp * 1000 - latest.timestamp.getTime();
+      if (lagMs > STALE_HEAD_LAG_MS) {
+        console.log(
+          `[arcana:collector] DB head is stale by ${Math.round(
+            lagMs / 60000,
+          )}m, jumping to recent window at ${recoveryStart}`,
+        );
+        return recoveryStart;
+      }
+    }
+
+    return latest.blockNumber + 1;
   }
 
   /** Collect a range of blocks and return their data */

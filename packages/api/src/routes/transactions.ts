@@ -3,6 +3,7 @@ import {
   getRecentTransactions,
   getTransactionByHash,
   getStylusTransactionCount,
+  getLatestTransactionTimestamp,
 } from "@arcana/db";
 
 export function registerTransactionRoutes(app: App) {
@@ -41,8 +42,20 @@ export function registerTransactionRoutes(app: App) {
 
   // Get Stylus transaction stats
   app.get("/api/transactions/stylus/stats", async () => {
-    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const last1h = new Date(Date.now() - 60 * 60 * 1000);
+    const anchor = await getLatestTransactionTimestamp(app.db);
+    if (!anchor) {
+      return {
+        success: true,
+        data: {
+          total: 0,
+          last24h: 0,
+          last1h: 0,
+        },
+      };
+    }
+
+    const last24h = new Date(anchor.getTime() - 24 * 60 * 60 * 1000);
+    const last1h = new Date(anchor.getTime() - 60 * 60 * 1000);
 
     const [total, last24hCount, last1hCount] = await Promise.all([
       getStylusTransactionCount(app.db),

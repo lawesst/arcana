@@ -1,15 +1,33 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-async function fetchApi<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    cache: "no-store",
-  });
+type ErrorPayload = {
+  error?: string;
+  message?: string;
+};
+
+async function parseResponse<T>(res: Response): Promise<T> {
+  const payload = (await res.json().catch(() => null)) as
+    | (T & ErrorPayload)
+    | null;
 
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    throw new Error(
+      payload?.error ??
+        payload?.message ??
+        `API error: ${res.status} ${res.statusText}`,
+    );
   }
 
-  return res.json();
+  return payload as T;
+}
+
+async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    cache: "no-store",
+    ...init,
+  });
+
+  return parseResponse<T>(res);
 }
 
 // ── dApps ──
@@ -25,12 +43,17 @@ export async function createDapp(body: {
   name: string;
   contractAddresses: string[];
 }) {
-  const res = await fetch(`${API_URL}/api/dapps`, {
+  return fetchApi<{ success: boolean; data: DApp }>("/api/dapps", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return res.json();
+}
+
+export async function deleteDapp(id: string) {
+  return fetchApi<{ success: boolean }>(`/api/dapps/${id}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Metrics ──
@@ -100,19 +123,25 @@ export async function createAlertRule(body: {
   window: string;
   dappId?: string;
 }) {
-  const res = await fetch(`${API_URL}/api/alerts`, {
+  return fetchApi<{ success: boolean; data: AlertRule }>("/api/alerts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return res.json();
 }
 
 export async function deleteAlertRule(id: string) {
-  const res = await fetch(`${API_URL}/api/alerts/${id}`, {
+  return fetchApi<{ success: boolean }>(`/api/alerts/${id}`, {
     method: "DELETE",
   });
-  return res.json();
+}
+
+export async function updateAlertRule(id: string, body: { enabled: boolean }) {
+  return fetchApi<{ success: boolean }>(`/api/alerts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 // ── Events ──

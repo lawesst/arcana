@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   fetchGasComparison,
   fetchGasComparisonTimeSeries,
   fetchTopStylusContracts,
   fetchStylusAdoption,
 } from "@/lib/api";
+import { EXPLORER_URLS } from "@arcana/shared";
 import { MetricCard } from "@/components/cards/MetricCard";
 import { ErrorState } from "@/components/ErrorState";
 import {
@@ -19,7 +20,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
   PieChart,
   Pie,
   Cell,
@@ -80,39 +80,40 @@ export default function StylusPage() {
 
   const ranges = ["1h", "6h", "24h", "7d", "30d"];
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [gasRes, tsRes, contractsRes, adoptionRes] = await Promise.all([
-          fetchGasComparison(range),
-          fetchGasComparisonTimeSeries(range),
-          fetchTopStylusContracts(range),
-          fetchStylusAdoption(range),
-        ]);
-        setGasComp(gasRes.data);
-        setTimeSeries(
-          tsRes.data.map((p) => ({
-            ...p,
-            time: new Date(p.time).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          })),
-        );
-        setContracts(contractsRes.data);
-        setAdoption(adoptionRes.data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load Stylus data");
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [gasRes, tsRes, contractsRes, adoptionRes] = await Promise.all([
+        fetchGasComparison(range),
+        fetchGasComparisonTimeSeries(range),
+        fetchTopStylusContracts(range),
+        fetchStylusAdoption(range),
+      ]);
+      setGasComp(gasRes.data);
+      setTimeSeries(
+        tsRes.data.map((p) => ({
+          ...p,
+          time: new Date(p.time).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        })),
+      );
+      setContracts(contractsRes.data);
+      setAdoption(adoptionRes.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load Stylus data");
+    } finally {
+      setLoading(false);
     }
+  }, [range]);
+
+  useEffect(() => {
     load();
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
-  }, [range]);
+  }, [load]);
 
   const pieData = adoption
     ? [
@@ -120,6 +121,9 @@ export default function StylusPage() {
         { name: "EVM", value: adoption.evmTxs },
       ]
     : [];
+  const showSparseDots = timeSeries.filter(
+    (point) => point.stylusCount > 0 || point.evmCount > 0,
+  ).length <= 2;
 
   return (
     <div className="space-y-6">
@@ -149,7 +153,7 @@ export default function StylusPage() {
       </div>
 
       {error ? (
-        <ErrorState message={error} onRetry={() => { setLoading(true); setError(null); }} />
+        <ErrorState message={error} onRetry={load} />
       ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -384,7 +388,8 @@ export default function StylusPage() {
                       dataKey="stylusAvgGas"
                       stroke="#5c7cfa"
                       strokeWidth={2}
-                      dot={false}
+                      dot={showSparseDots ? { r: 3 } : false}
+                      activeDot={{ r: 4 }}
                       name="Stylus Avg Gas"
                     />
                     <Line
@@ -392,7 +397,8 @@ export default function StylusPage() {
                       dataKey="evmAvgGas"
                       stroke="#f59e0b"
                       strokeWidth={2}
-                      dot={false}
+                      dot={showSparseDots ? { r: 3 } : false}
+                      activeDot={{ r: 4 }}
                       name="EVM Avg Gas"
                     />
                   </LineChart>
@@ -445,9 +451,18 @@ export default function StylusPage() {
                         className="border-b border-[#2a3040]/50 hover:bg-[#1a1f2e]/50"
                       >
                         <td className="py-2.5 px-3 font-mono text-arcana-400">
-                          {c.address
-                            ? `${c.address.slice(0, 10)}...${c.address.slice(-6)}`
-                            : "—"}
+                          {c.address ? (
+                            <a
+                              href={`${EXPLORER_URLS[42161]}/address/${c.address}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-arcana-300"
+                            >
+                              {`${c.address.slice(0, 10)}...${c.address.slice(-6)}`}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-300">
                           {c.txCount.toLocaleString()}

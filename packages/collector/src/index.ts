@@ -1,11 +1,13 @@
 import cron from "node-cron";
 import Redis from "ioredis";
 import { loadEnv } from "@arcana/shared/src/config";
-import { createDb, getAllDapps } from "@arcana/db";
+import { INTERNAL_REDIS_CHANNELS } from "@arcana/shared";
+import { createDb, getAllDapps, getDappById } from "@arcana/db";
 import { createProvider, withRetry } from "./provider";
 import { BlockCollector } from "./collectors/block-collector";
 import { TxCollector } from "./collectors/tx-collector";
 import { EventCollector } from "./collectors/event-collector";
+import { DappBackfiller } from "./collectors/dapp-backfiller";
 import { Aggregator } from "./collectors/aggregator";
 import { AlertEvaluator } from "./collectors/alert-evaluator";
 import { Publisher } from "./publisher";
@@ -20,15 +22,60 @@ async function main() {
   // Initialize connections
   const { db } = createDb(env.DATABASE_URL);
   const redis = new Redis(env.REDIS_URL);
+  const redisSub = new Redis(env.REDIS_URL);
   const provider = createProvider(env.ARBITRUM_RPC_URL);
 
   // Initialize components
   const blockCollector = new BlockCollector(provider, db);
   const txCollector = new TxCollector(provider, db);
   const eventCollector = new EventCollector(provider, db);
+  const dappBackfiller = new DappBackfiller(provider, db);
   const aggregator = new Aggregator(db);
   const alertEvaluator = new AlertEvaluator(db, redis);
   const publisher = new Publisher(redis);
+
+  await redisSub.subscribe(INTERNAL_REDIS_CHANNELS.DAPPS);
+  redisSub.on("message", (channel: string, message: string) => {
+    if (channel !== INTERNAL_REDIS_CHANNELS.DAPPS) return;
+
+    txCollector.clearDappCache();
+    eventCollector.clearDappCache();
+    console.log(
+      `[arcana:collector] Cleared dApp caches after invalidation: ${message}`,
+    );
+
+    void (async () => {
+      try {
+        const payload = JSON.parse(message) as {
+          action?: "created" | "deleted";
+          dappId?: string;
+        };
+        if (payload.action !== "created" || !payload.dappId) {
+          return;
+        }
+
+        const dapp = await getDappById(db, payload.dappId);
+        if (!dapp) return;
+
+        await dappBackfiller.backfillDappIfMissing({
+          id: dapp.id,
+          name: dapp.name,
+          contractAddresses: dapp.contractAddresses,
+        });
+      } catch (error) {
+        console.error("[arcana:collector] Failed to backfill new dApp:", error);
+      }
+    })();
+  });
+
+  const monitoredDapps = await getAllDapps(db);
+  await dappBackfiller.backfillMissingDapps(
+    monitoredDapps.map((dapp) => ({
+      id: dapp.id,
+      name: dapp.name,
+      contractAddresses: dapp.contractAddresses,
+    })),
+  );
 
   let lastProcessedBlock = await blockCollector.getStartBlock();
   console.log(`[arcana:collector] Starting from block ${lastProcessedBlock}`);
@@ -46,14 +93,20 @@ async function main() {
 
       if (currentBlock <= lastProcessedBlock) return;
 
-      // Limit batch size to avoid overwhelming the RPC
+      const lag = currentBlock - lastProcessedBlock;
+      const batchSize =
+        lag > env.COLLECTOR_BATCH_SIZE * 5
+          ? Math.min(env.COLLECTOR_BATCH_SIZE * 25, 200)
+          : env.COLLECTOR_BATCH_SIZE;
+
+      // Increase the batch size while catching up so live indexing can recover.
       const toBlock = Math.min(
-        lastProcessedBlock + env.COLLECTOR_BATCH_SIZE,
+        lastProcessedBlock + batchSize - 1,
         currentBlock,
       );
 
       console.log(
-        `[arcana:collector] Processing blocks ${lastProcessedBlock} → ${toBlock}`,
+        `[arcana:collector] Processing blocks ${lastProcessedBlock} → ${toBlock} (lag=${lag}, batch=${batchSize})`,
       );
 
       const blocks = await blockCollector.collectBlockRange(
@@ -179,6 +232,7 @@ async function main() {
     console.log("\n[arcana:collector] Shutting down...");
     clearInterval(pollInterval);
     redis.disconnect();
+    redisSub.disconnect();
     process.exit(0);
   });
 
@@ -186,6 +240,7 @@ async function main() {
     console.log("\n[arcana:collector] Shutting down...");
     clearInterval(pollInterval);
     redis.disconnect();
+    redisSub.disconnect();
     process.exit(0);
   });
 }

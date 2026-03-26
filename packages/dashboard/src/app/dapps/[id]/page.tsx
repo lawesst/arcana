@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
-import { fetchDapp, fetchDappMetrics, fetchEvents } from "@/lib/api";
+import { useParams, useRouter } from "next/navigation";
+import { fetchDapp, fetchDappMetrics, fetchEvents, deleteDapp } from "@/lib/api";
 import { MetricCard } from "@/components/cards/MetricCard";
 import { GasUsageChart } from "@/components/charts/GasUsageChart";
 import { TxThroughputChart } from "@/components/charts/TxThroughputChart";
@@ -15,6 +15,7 @@ interface DApp {
   name: string;
   contractAddresses: string[];
   chainId: number;
+  createdAt: string;
 }
 
 interface ContractEvent {
@@ -30,6 +31,7 @@ interface ContractEvent {
 
 export default function DAppDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
   const [dapp, setDapp] = useState<DApp | null>(null);
   const [metrics, setMetrics] = useState<MetricData[]>([]);
@@ -37,8 +39,11 @@ export default function DAppDetailPage() {
   const [range, setRange] = useState("24h");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     setError(null);
     try {
       const [dappRes, metricsRes, eventsRes] = await Promise.all([
@@ -48,15 +53,22 @@ export default function DAppDetailPage() {
       ]);
       setDapp(dappRes.data);
       setMetrics(
-        metricsRes.data.map((m) => ({
-          time: new Date(m.windowStart).toLocaleTimeString(),
-          gasUsed: parseFloat(m.avgGasUsed),
-          gasPrice: parseFloat(m.avgGasPrice),
-          txCount: m.txCount,
-          errorRate: parseFloat(m.errorRate) * 100,
-          uniqueAddresses: m.uniqueAddresses,
-          stylusTxCount: m.stylusTxCount,
-        })),
+        metricsRes.data
+          .slice()
+          .sort(
+            (a, b) =>
+              new Date(a.windowStart).getTime() -
+              new Date(b.windowStart).getTime(),
+          )
+          .map((m) => ({
+            time: new Date(m.windowStart).toLocaleTimeString(),
+            gasUsed: parseFloat(m.avgGasUsed),
+            gasPrice: parseFloat(m.avgGasPrice),
+            txCount: m.txCount,
+            errorRate: parseFloat(m.errorRate) * 100,
+            uniqueAddresses: m.uniqueAddresses,
+            stylusTxCount: m.stylusTxCount,
+          })),
       );
       setEvents(eventsRes.data);
     } catch (err) {
@@ -71,7 +83,31 @@ export default function DAppDetailPage() {
   }, [load]);
 
   const ranges = ["1h", "6h", "24h", "7d"];
-  const latest = metrics[0];
+  const latest = metrics[metrics.length - 1];
+  const backfillInProgress =
+    !!dapp &&
+    metrics.length === 0 &&
+    events.length === 0 &&
+    Date.now() - new Date(dapp.createdAt).getTime() < 6 * 60 * 60 * 1000;
+
+  async function handleDelete() {
+    if (!dapp) return;
+    if (!window.confirm(`Stop monitoring ${dapp.name}?`)) return;
+
+    setDeleting(true);
+    setActionError(null);
+
+    try {
+      await deleteDapp(dapp.id);
+      router.push("/dapps");
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Failed to delete dApp",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -118,7 +154,7 @@ export default function DAppDetailPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {ranges.map((r) => (
             <button
               key={r}
@@ -132,8 +168,28 @@ export default function DAppDetailPage() {
               {r}
             </button>
           ))}
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "Removing..." : "Remove dApp"}
+          </button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {actionError}
+        </div>
+      )}
+
+      {backfillInProgress && (
+        <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+          Historical backfill in progress for this dApp. Refresh in a minute to
+          see imported transactions and events.
+        </div>
+      )}
 
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -168,7 +224,9 @@ export default function DAppDetailPage() {
         <h3 className="card-header mb-4">Recent Events</h3>
         {events.length === 0 ? (
           <div className="py-8 text-center text-slate-500">
-            No events captured for this dApp yet
+            {backfillInProgress
+              ? "Historical backfill in progress..."
+              : "No events captured for this dApp yet"}
           </div>
         ) : (
           <div className="overflow-x-auto">
