@@ -2,9 +2,9 @@
 
 Arcana is an analytics dashboard for Stylus contracts on Arbitrum One. It indexes chain activity, computes performance metrics, stores historical trends, and exposes everything through a Fastify API and a Next.js dashboard.
 
-## MVP Scope
+## Features
 
-The current MVP includes:
+Arcana includes:
 
 - live Arbitrum block, transaction, and event ingestion
 - Stylus contract detection
@@ -110,6 +110,7 @@ pnpm dev:api          # api only
 pnpm dev:dashboard    # dashboard only
 pnpm build            # build all packages
 pnpm lint             # typecheck all packages
+pnpm test:e2e         # seed data, build, and run Playwright smoke tests
 pnpm db:migrate       # apply database migrations
 ```
 
@@ -126,7 +127,7 @@ pnpm db:migrate       # apply database migrations
 
 - Arcana is currently optimized for Arbitrum One.
 - Historical data appears gradually when a new monitored dApp is added because the collector performs a background backfill.
-- The project is functional as an MVP, but automated coverage is still light.
+- A Playwright smoke suite covers the core browser flows and runs automatically on pushes and pull requests through GitHub Actions.
 
 ## License
 

@@ -1,15 +1,23 @@
 import { ethers } from "ethers";
+import type Redis from "ioredis";
 import type { Database } from "@arcana/db";
 import {
   getDappByAddress,
-  getEventCountSince,
-  getTransactionCountSince,
   insertEventsBatch,
   insertTransactionsBatch,
 } from "@arcana/db";
-import { getMethodId, isStylusBytecode } from "@arcana/shared";
+import {
+  getMethodId,
+  isStylusBytecode,
+  type BackfillState,
+  type BackfillStatus,
+} from "@arcana/shared";
 import { withRetry } from "../provider";
 import { decodeEventName, decodeLogData } from "./event-utils";
+import {
+  readBackfillStatus,
+  writeBackfillStatus,
+} from "../backfill-status-store";
 
 const SPLIT_ERROR_PATTERNS = [
   "block range",
@@ -39,6 +47,7 @@ export class DappBackfiller {
   constructor(
     private provider: ethers.JsonRpcProvider,
     private db: Database,
+    private redis: Redis,
   ) {}
 
   async backfillMissingDapps(dapps: MonitoredDapp[]) {
@@ -58,6 +67,7 @@ export class DappBackfiller {
       try {
         await this.backfillDappIfMissing(dapp);
       } catch (error) {
+        await this.markFailed(dapp.id, error);
         console.error(
           `[arcana:collector] Failed to backfill ${dapp.name}:`,
           error,
@@ -67,12 +77,9 @@ export class DappBackfiller {
   }
 
   async backfillDappIfMissing(dapp: MonitoredDapp) {
-    const [txCount, eventCount] = await Promise.all([
-      getTransactionCountSince(this.db, new Date(0), dapp.id),
-      getEventCountSince(this.db, new Date(0), dapp.id),
-    ]);
+    const existingStatus = await readBackfillStatus(this.redis, dapp.id);
 
-    if (txCount > 0 || eventCount > 0) {
+    if (existingStatus?.state === "completed") {
       return;
     }
 
@@ -80,6 +87,18 @@ export class DappBackfiller {
   }
 
   async backfillDapp(dapp: MonitoredDapp) {
+    const status = await this.createInitialStatus(dapp.id);
+    await this.updateStatus(status, {
+      state: "scanning",
+      message: "Scanning historical logs",
+      totalTransactions: null,
+      processedTransactions: 0,
+      indexedTransactions: 0,
+      indexedEvents: 0,
+      finishedAt: null,
+      error: null,
+    });
+
     const monitoredAddresses = Array.from(
       new Set(dapp.contractAddresses.map((address) => address.toLowerCase())),
     );
@@ -106,11 +125,31 @@ export class DappBackfiller {
     }
 
     if (txHashes.size === 0) {
+      await this.updateStatus(status, {
+        state: "completed",
+        totalTransactions: 0,
+        processedTransactions: 0,
+        indexedTransactions: 0,
+        indexedEvents: 0,
+        finishedAt: new Date(),
+        message: "No historical logs found",
+        error: null,
+      });
       console.log(
         `[arcana:collector] Backfill found no historical logs for ${dapp.name}`,
       );
       return;
     }
+
+    await this.updateStatus(status, {
+      state: "syncing",
+      totalTransactions: txHashes.size,
+      processedTransactions: 0,
+      indexedTransactions: 0,
+      indexedEvents: 0,
+      message: "Importing historical transactions and events",
+      error: null,
+    });
 
     console.log(
       `[arcana:collector] Backfilling ${dapp.name} from ${txHashes.size} historical transactions`,
@@ -126,6 +165,8 @@ export class DappBackfiller {
       eventData: Record<string, unknown>;
       timestamp: Date;
     }> = [];
+    let indexedTransactions = 0;
+    let indexedEvents = 0;
 
     const txHashList = Array.from(txHashes);
     for (
@@ -148,8 +189,23 @@ export class DappBackfiller {
       }
 
       if (txRows.length >= 50 || start + chunk.length >= txHashList.length) {
-        await insertTransactionsBatch(this.db, txRows);
-        await insertEventsBatch(this.db, eventRows);
+        const insertedTxCount = await insertTransactionsBatch(this.db, txRows);
+        const insertedEventCount = await insertEventsBatch(this.db, eventRows);
+        indexedTransactions += insertedTxCount;
+        indexedEvents += insertedEventCount;
+        const processedTransactions = Math.min(
+          start + chunk.length,
+          txHashList.length,
+        );
+        await this.updateStatus(status, {
+          state: "syncing",
+          totalTransactions: txHashList.length,
+          processedTransactions,
+          indexedTransactions,
+          indexedEvents,
+          message: `Indexed ${processedTransactions} of ${txHashList.length} historical transactions`,
+          error: null,
+        });
         console.log(
           `[arcana:collector] Backfill progress ${dapp.name}: ${Math.min(
             start + chunk.length,
@@ -164,6 +220,16 @@ export class DappBackfiller {
     console.log(
       `[arcana:collector] Backfilled ${dapp.name}: ${txHashList.length} transactions discovered`,
     );
+    await this.updateStatus(status, {
+      state: "completed",
+      totalTransactions: txHashList.length,
+      processedTransactions: txHashList.length,
+      indexedTransactions,
+      indexedEvents,
+      finishedAt: new Date(),
+      message: "Historical backfill complete",
+      error: null,
+    });
   }
 
   private async buildBackfillRecords(
@@ -365,6 +431,67 @@ export class DappBackfiller {
     const dappId = dapp?.id ?? null;
     this.dappCache.set(lower, dappId);
     return dappId;
+  }
+
+  private async createInitialStatus(dappId: string): Promise<BackfillStatus> {
+    const existingStatus = await readBackfillStatus(this.redis, dappId);
+    const now = new Date();
+    return {
+      dappId,
+      state: existingStatus?.state ?? "queued",
+      startedAt: existingStatus?.startedAt ?? now,
+      updatedAt: now,
+      finishedAt: null,
+      totalTransactions: existingStatus?.totalTransactions ?? null,
+      processedTransactions: existingStatus?.processedTransactions ?? 0,
+      indexedTransactions: existingStatus?.indexedTransactions ?? 0,
+      indexedEvents: existingStatus?.indexedEvents ?? 0,
+      message: existingStatus?.message ?? null,
+      error: null,
+    };
+  }
+
+  private async updateStatus(
+    status: BackfillStatus,
+    patch: {
+      state?: BackfillState;
+      finishedAt?: Date | null;
+      totalTransactions?: number | null;
+      processedTransactions?: number;
+      indexedTransactions?: number;
+      indexedEvents?: number;
+      message?: string | null;
+      error?: string | null;
+    },
+  ) {
+    if (patch.state !== undefined) status.state = patch.state;
+    if (patch.finishedAt !== undefined) status.finishedAt = patch.finishedAt;
+    if (patch.totalTransactions !== undefined) {
+      status.totalTransactions = patch.totalTransactions;
+    }
+    if (patch.processedTransactions !== undefined) {
+      status.processedTransactions = patch.processedTransactions;
+    }
+    if (patch.indexedTransactions !== undefined) {
+      status.indexedTransactions = patch.indexedTransactions;
+    }
+    if (patch.indexedEvents !== undefined) {
+      status.indexedEvents = patch.indexedEvents;
+    }
+    if (patch.message !== undefined) status.message = patch.message;
+    if (patch.error !== undefined) status.error = patch.error;
+    status.updatedAt = new Date();
+    await writeBackfillStatus(this.redis, status);
+  }
+
+  private async markFailed(dappId: string, error: unknown) {
+    const status = await this.createInitialStatus(dappId);
+    await this.updateStatus(status, {
+      state: "failed",
+      finishedAt: new Date(),
+      message: "Historical backfill failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

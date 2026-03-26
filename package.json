@@ -11,11 +11,16 @@
     "build": "pnpm -r build",
     "db:generate": "pnpm --filter @arcana/db generate",
     "db:migrate": "pnpm --filter @arcana/db migrate",
-    "test": "pnpm -r test",
+    "test:e2e:seed": "pnpm db:migrate && pnpm --filter @arcana/db seed:e2e",
+    "test:e2e": "node scripts/reset-e2e-ports.mjs && rm -rf packages/dashboard/.next packages/dashboard/.next.broken.* && pnpm test:e2e:seed && pnpm build && playwright test",
+    "test:e2e:headed": "node scripts/reset-e2e-ports.mjs && rm -rf packages/dashboard/.next packages/dashboard/.next.broken.* && pnpm test:e2e:seed && pnpm build && playwright test --headed",
+    "test": "pnpm test:e2e",
     "lint": "pnpm -r lint"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "concurrently": "^9.1.2",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.3"
   },
   "packageManager": "pnpm@9.15.4",

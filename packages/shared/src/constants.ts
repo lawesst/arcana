@@ -41,6 +41,11 @@ export const INTERNAL_REDIS_CHANNELS = {
   DAPPS: "arcana:internal:dapps",
 } as const;
 
+/** Internal Redis key prefixes for shared service state */
+export const INTERNAL_REDIS_KEYS = {
+  BACKFILL_STATUS_PREFIX: "arcana:internal:backfill-status:",
+} as const;
+
 /** Default collector settings */
 export const COLLECTOR_DEFAULTS = {
   POLL_INTERVAL_MS: 1000,

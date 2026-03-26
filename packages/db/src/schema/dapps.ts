@@ -16,4 +16,5 @@ export const dapps = pgTable("dapps", {
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });

@@ -56,6 +56,12 @@ export async function deleteDapp(id: string) {
   });
 }
 
+export async function fetchDappBackfillStatus(dappId: string) {
+  return fetchApi<{ success: boolean; data: BackfillStatus }>(
+    `/api/dapps/${dappId}/backfill-status`,
+  );
+}
+
 // ── Metrics ──
 export async function fetchGlobalMetrics(range = "24h") {
   return fetchApi<{ success: boolean; data: MetricAggregate[] }>(
@@ -225,6 +231,21 @@ interface DApp {
   contractAddresses: string[];
   chainId: number;
   createdAt: string;
+  deletedAt?: string | null;
+}
+
+export interface BackfillStatus {
+  dappId: string;
+  state: "queued" | "scanning" | "syncing" | "completed" | "failed";
+  startedAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  totalTransactions: number | null;
+  processedTransactions: number;
+  indexedTransactions: number;
+  indexedEvents: number;
+  message: string | null;
+  error: string | null;
 }
 
 interface MetricAggregate {

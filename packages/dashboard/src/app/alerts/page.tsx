@@ -202,6 +202,7 @@ export default function AlertsPage() {
           </p>
         </div>
         <button
+          data-testid="toggle-alert-form"
           onClick={() => setShowForm(!showForm)}
           className="px-4 py-2 bg-arcana-600 text-white rounded-lg text-sm font-medium hover:bg-arcana-700 transition-colors"
         >
@@ -217,6 +218,7 @@ export default function AlertsPage() {
                 Scope
               </label>
               <select
+                data-testid="alert-scope-select"
                 value={selectedDappId}
                 onChange={(e) => setSelectedDappId(e.target.value)}
                 disabled={submitting}
@@ -236,6 +238,7 @@ export default function AlertsPage() {
                 Metric
               </label>
               <select
+                data-testid="alert-metric-select"
                 value={metric}
                 onChange={(e) => setMetric(e.target.value)}
                 disabled={submitting}
@@ -254,6 +257,7 @@ export default function AlertsPage() {
                 Condition
               </label>
               <select
+                data-testid="alert-condition-select"
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
                 disabled={submitting}
@@ -269,6 +273,7 @@ export default function AlertsPage() {
                 Threshold
               </label>
               <input
+                data-testid="alert-threshold-input"
                 type="number"
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
@@ -286,6 +291,7 @@ export default function AlertsPage() {
                 Window
               </label>
               <select
+                data-testid="alert-window-select"
                 value={window}
                 onChange={(e) => setWindow(e.target.value)}
                 disabled={submitting}
@@ -305,6 +311,7 @@ export default function AlertsPage() {
           )}
 
           <button
+            data-testid="submit-alert-form"
             type="submit"
             disabled={submitting}
             className="px-4 py-2 bg-arcana-600 text-white rounded-lg text-sm font-medium hover:bg-arcana-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -347,6 +354,7 @@ export default function AlertsPage() {
                 {rules.map((rule) => (
                   <div
                     key={rule.id}
+                    data-testid={`alert-rule-${rule.id}`}
                     className="card flex items-center justify-between gap-4 flex-wrap"
                   >
                     <div className="flex items-center gap-4 flex-wrap">
@@ -385,6 +393,7 @@ export default function AlertsPage() {
 
                     <div className="flex items-center gap-2">
                       <button
+                        data-testid={`alert-toggle-${rule.id}`}
                         onClick={() => handleToggle(rule)}
                         disabled={pendingRuleId === rule.id}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#1a1f2e] text-slate-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -396,6 +405,7 @@ export default function AlertsPage() {
                             : "Enable"}
                       </button>
                       <button
+                        data-testid={`alert-delete-${rule.id}`}
                         onClick={() => handleDelete(rule.id)}
                         disabled={pendingRuleId === rule.id}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"

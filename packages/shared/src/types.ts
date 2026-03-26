@@ -101,6 +101,28 @@ export interface AlertEvent {
   resolvedAt: Date | null;
 }
 
+/** Historical backfill state for a monitored dApp */
+export type BackfillState =
+  | "queued"
+  | "scanning"
+  | "syncing"
+  | "completed"
+  | "failed";
+
+export interface BackfillStatus {
+  dappId: string;
+  state: BackfillState;
+  startedAt: Date;
+  updatedAt: Date;
+  finishedAt: Date | null;
+  totalTransactions: number | null;
+  processedTransactions: number;
+  indexedTransactions: number;
+  indexedEvents: number;
+  message: string | null;
+  error: string | null;
+}
+
 /** WebSocket message types for real-time updates */
 export type WsMessageType =
   | "metric_update"

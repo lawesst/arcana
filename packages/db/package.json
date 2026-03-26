@@ -8,6 +8,7 @@
     "build": "tsc",
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
+    "seed:e2e": "tsx src/scripts/seed-e2e.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

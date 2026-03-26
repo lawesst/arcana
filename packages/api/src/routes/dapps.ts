@@ -1,6 +1,17 @@
 import type { App } from "../types";
-import { getAllDapps, getDappById, createDapp, deleteDapp } from "@arcana/db";
-import { INTERNAL_REDIS_CHANNELS } from "@arcana/shared";
+import {
+  getAllDapps,
+  getDappById,
+  createDapp,
+  deleteDapp,
+  getTransactionCountSince,
+  getEventCountSince,
+} from "@arcana/db";
+import {
+  INTERNAL_REDIS_CHANNELS,
+  INTERNAL_REDIS_KEYS,
+  type BackfillStatus,
+} from "@arcana/shared";
 
 export function registerDappRoutes(app: App) {
   // List all dApps
@@ -17,6 +28,21 @@ export function registerDappRoutes(app: App) {
     }
     return { success: true, data: dapp };
   });
+
+  app.get<{ Params: { id: string } }>(
+    "/api/dapps/:id/backfill-status",
+    async (req, reply) => {
+      const dapp = await getDappById(app.db, req.params.id);
+      if (!dapp) {
+        return reply
+          .status(404)
+          .send({ success: false, error: "dApp not found" });
+      }
+
+      const status = await getBackfillStatus(app, dapp.id, dapp.createdAt);
+      return { success: true, data: status };
+    },
+  );
 
   // Register a new dApp
   app.post<{
@@ -68,6 +94,20 @@ export function registerDappRoutes(app: App) {
       chainId,
     });
 
+    await setBackfillStatus(app, {
+      dappId: dapp.id,
+      state: "queued",
+      startedAt: new Date(),
+      updatedAt: new Date(),
+      finishedAt: null,
+      totalTransactions: null,
+      processedTransactions: 0,
+      indexedTransactions: 0,
+      indexedEvents: 0,
+      message: "Waiting for collector to start historical backfill",
+      error: null,
+    });
+
     await publishDappInvalidation(app, {
       action: "created",
       dappId: dapp.id,
@@ -87,6 +127,7 @@ export function registerDappRoutes(app: App) {
       }
 
       await deleteDapp(app.db, req.params.id);
+      await clearBackfillStatus(app, dapp.id);
 
       await publishDappInvalidation(app, {
         action: "deleted",
@@ -97,6 +138,98 @@ export function registerDappRoutes(app: App) {
       return { success: true };
     },
   );
+}
+
+function getBackfillStatusKey(dappId: string) {
+  return `${INTERNAL_REDIS_KEYS.BACKFILL_STATUS_PREFIX}${dappId}`;
+}
+
+async function setBackfillStatus(app: App, status: BackfillStatus) {
+  await app.redisPub.set(
+    getBackfillStatusKey(status.dappId),
+    JSON.stringify({
+      ...status,
+      startedAt: status.startedAt.toISOString(),
+      updatedAt: status.updatedAt.toISOString(),
+      finishedAt: status.finishedAt?.toISOString() ?? null,
+    }),
+  );
+}
+
+async function clearBackfillStatus(app: App, dappId: string) {
+  await app.redisPub.del(getBackfillStatusKey(dappId));
+}
+
+async function getBackfillStatus(
+  app: App,
+  dappId: string,
+  createdAt: Date,
+): Promise<BackfillStatus> {
+  const raw = await app.redisPub.get(getBackfillStatusKey(dappId));
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Omit<
+        BackfillStatus,
+        "startedAt" | "updatedAt" | "finishedAt"
+      > & {
+        startedAt: string;
+        updatedAt: string;
+        finishedAt: string | null;
+      };
+
+      return {
+        ...parsed,
+        startedAt: new Date(parsed.startedAt),
+        updatedAt: new Date(parsed.updatedAt),
+        finishedAt: parsed.finishedAt ? new Date(parsed.finishedAt) : null,
+        totalTransactions:
+          parsed.totalTransactions === null
+            ? null
+            : Number(parsed.totalTransactions),
+        processedTransactions: Number(parsed.processedTransactions),
+        indexedTransactions: Number(parsed.indexedTransactions),
+        indexedEvents: Number(parsed.indexedEvents),
+      };
+    } catch {
+      // Fall through to a derived status if Redis contains malformed data.
+    }
+  }
+
+  const [txCount, eventCount] = await Promise.all([
+    getTransactionCountSince(app.db, new Date(0), dappId),
+    getEventCountSince(app.db, new Date(0), dappId),
+  ]);
+  const now = new Date();
+
+  if (txCount > 0 || eventCount > 0) {
+    return {
+      dappId,
+      state: "completed",
+      startedAt: createdAt,
+      updatedAt: now,
+      finishedAt: now,
+      totalTransactions: Number(txCount),
+      processedTransactions: Number(txCount),
+      indexedTransactions: Number(txCount),
+      indexedEvents: Number(eventCount),
+      message: "Historical data available",
+      error: null,
+    };
+  }
+
+  return {
+    dappId,
+    state: "queued",
+    startedAt: createdAt,
+    updatedAt: now,
+    finishedAt: null,
+    totalTransactions: null,
+    processedTransactions: 0,
+    indexedTransactions: 0,
+    indexedEvents: 0,
+    message: "Waiting for collector to start historical backfill",
+    error: null,
+  };
 }
 
 function normalizeContractAddresses(addresses: string[]) {

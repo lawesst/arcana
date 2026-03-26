@@ -190,6 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="flex items-center gap-3 rounded-xl border border-[#3c494e]/20 bg-[#161d1f] px-3 py-2">
                 <Search className="h-4 w-4 text-[#859399]" />
                 <input
+                  data-testid="global-search-input"
                   type="text"
                   placeholder="Search tx hash, address, block..."
                   value={searchQuery}
@@ -232,6 +233,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </div>
                   ) : (
                     <button
+                      data-testid="global-search-result"
                       type="button"
                       onClick={navigateToResult}
                       className="w-full px-4 py-3 text-left transition-colors hover:bg-[#242b2e]/70"

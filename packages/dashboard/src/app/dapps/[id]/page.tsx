@@ -2,7 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { fetchDapp, fetchDappMetrics, fetchEvents, deleteDapp } from "@/lib/api";
+import {
+  fetchDapp,
+  fetchDappMetrics,
+  fetchDappBackfillStatus,
+  fetchEvents,
+  deleteDapp,
+  type BackfillStatus,
+} from "@/lib/api";
 import { MetricCard } from "@/components/cards/MetricCard";
 import { GasUsageChart } from "@/components/charts/GasUsageChart";
 import { TxThroughputChart } from "@/components/charts/TxThroughputChart";
@@ -36,47 +43,66 @@ export default function DAppDetailPage() {
   const [dapp, setDapp] = useState<DApp | null>(null);
   const [metrics, setMetrics] = useState<MetricData[]>([]);
   const [events, setEvents] = useState<ContractEvent[]>([]);
+  const [backfillStatus, setBackfillStatus] = useState<BackfillStatus | null>(
+    null,
+  );
   const [range, setRange] = useState("24h");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const applyMetrics = useCallback((rows: MetricAggregateResponse[]) => {
+    setMetrics(
+      rows
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.windowStart).getTime() - new Date(b.windowStart).getTime(),
+        )
+        .map((m) => ({
+          time: new Date(m.windowStart).toLocaleTimeString(),
+          gasUsed: parseFloat(m.avgGasUsed),
+          gasPrice: parseFloat(m.avgGasPrice),
+          txCount: m.txCount,
+          errorRate: parseFloat(m.errorRate) * 100,
+          uniqueAddresses: m.uniqueAddresses,
+          stylusTxCount: m.stylusTxCount,
+        })),
+    );
+  }, []);
+
+  const refreshBackfill = useCallback(async () => {
+    const [metricsRes, eventsRes, backfillRes] = await Promise.all([
+      fetchDappMetrics(id, range),
+      fetchEvents({ dappId: id, limit: 20 }),
+      fetchDappBackfillStatus(id),
+    ]);
+    applyMetrics(metricsRes.data);
+    setEvents(eventsRes.data);
+    setBackfillStatus(backfillRes.data);
+  }, [applyMetrics, id, range]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [dappRes, metricsRes, eventsRes] = await Promise.all([
+      const [dappRes, metricsRes, eventsRes, backfillRes] = await Promise.all([
         fetchDapp(id),
         fetchDappMetrics(id, range),
         fetchEvents({ dappId: id, limit: 20 }),
+        fetchDappBackfillStatus(id),
       ]);
       setDapp(dappRes.data);
-      setMetrics(
-        metricsRes.data
-          .slice()
-          .sort(
-            (a, b) =>
-              new Date(a.windowStart).getTime() -
-              new Date(b.windowStart).getTime(),
-          )
-          .map((m) => ({
-            time: new Date(m.windowStart).toLocaleTimeString(),
-            gasUsed: parseFloat(m.avgGasUsed),
-            gasPrice: parseFloat(m.avgGasPrice),
-            txCount: m.txCount,
-            errorRate: parseFloat(m.errorRate) * 100,
-            uniqueAddresses: m.uniqueAddresses,
-            stylusTxCount: m.stylusTxCount,
-          })),
-      );
+      applyMetrics(metricsRes.data);
       setEvents(eventsRes.data);
+      setBackfillStatus(backfillRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dApp");
     } finally {
       setLoading(false);
     }
-  }, [id, range]);
+  }, [applyMetrics, id, range]);
 
   useEffect(() => {
     load();
@@ -85,10 +111,32 @@ export default function DAppDetailPage() {
   const ranges = ["1h", "6h", "24h", "7d"];
   const latest = metrics[metrics.length - 1];
   const backfillInProgress =
-    !!dapp &&
-    metrics.length === 0 &&
-    events.length === 0 &&
-    Date.now() - new Date(dapp.createdAt).getTime() < 6 * 60 * 60 * 1000;
+    backfillStatus?.state === "queued" ||
+    backfillStatus?.state === "scanning" ||
+    backfillStatus?.state === "syncing";
+  const backfillProgress =
+    backfillStatus?.totalTransactions && backfillStatus.totalTransactions > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (backfillStatus.processedTransactions /
+              backfillStatus.totalTransactions) *
+              100,
+          ),
+        )
+      : null;
+
+  useEffect(() => {
+    if (!backfillInProgress) return;
+
+    const interval = setInterval(() => {
+      void refreshBackfill().catch(() => {
+        // Ignore transient polling errors and keep the latest successful state.
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [backfillInProgress, refreshBackfill]);
 
   async function handleDelete() {
     if (!dapp) return;
@@ -102,7 +150,7 @@ export default function DAppDetailPage() {
       router.push("/dapps");
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : "Failed to delete dApp",
+        err instanceof Error ? err.message : "Failed to archive dApp",
       );
     } finally {
       setDeleting(false);
@@ -169,11 +217,12 @@ export default function DAppDetailPage() {
             </button>
           ))}
           <button
+            data-testid="archive-dapp-button"
             onClick={handleDelete}
             disabled={deleting}
             className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {deleting ? "Removing..." : "Remove dApp"}
+            {deleting ? "Archiving..." : "Archive dApp"}
           </button>
         </div>
       </div>
@@ -184,10 +233,83 @@ export default function DAppDetailPage() {
         </div>
       )}
 
-      {backfillInProgress && (
-        <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-          Historical backfill in progress for this dApp. Refresh in a minute to
-          see imported transactions and events.
+      {backfillStatus && (
+        <div
+          data-testid="backfill-status-panel"
+          className={`rounded-lg border px-4 py-4 text-sm ${
+            backfillStatus.state === "failed"
+              ? "border-red-500/30 bg-red-500/10 text-red-200"
+              : backfillStatus.state === "completed"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                : "border-cyan-500/30 bg-cyan-500/10 text-cyan-100"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em]">
+                Historical Backfill
+              </p>
+              <p className="mt-1">
+                {backfillStatus.error ??
+                  backfillStatus.message ??
+                  "Backfill status unavailable"}
+              </p>
+            </div>
+            <span className="rounded-full border border-current/20 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]">
+              {backfillStatus.state}
+            </span>
+          </div>
+
+          {backfillInProgress && (
+            <div className="mt-4 space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-black/20">
+                <div
+                  className={`h-full rounded-full ${
+                    backfillProgress === null
+                      ? "w-1/3 animate-pulse bg-cyan-300"
+                      : "bg-cyan-300 transition-[width] duration-500"
+                  }`}
+                  style={
+                    backfillProgress === null
+                      ? undefined
+                      : { width: `${backfillProgress}%` }
+                  }
+                />
+              </div>
+              <p className="text-xs text-current/80">
+                {backfillStatus.totalTransactions
+                  ? `${backfillStatus.processedTransactions.toLocaleString()} of ${backfillStatus.totalTransactions.toLocaleString()} transactions processed`
+                  : "Scanning chain history to determine total workload"}
+              </p>
+            </div>
+          )}
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-current/70">
+                Processed
+              </p>
+              <p className="mt-1 font-semibold">
+                {backfillStatus.processedTransactions.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-current/70">
+                Indexed Txs
+              </p>
+              <p className="mt-1 font-semibold">
+                {backfillStatus.indexedTransactions.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.16em] text-current/70">
+                Indexed Events
+              </p>
+              <p className="mt-1 font-semibold">
+                {backfillStatus.indexedEvents.toLocaleString()}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -226,6 +348,9 @@ export default function DAppDetailPage() {
           <div className="py-8 text-center text-slate-500">
             {backfillInProgress
               ? "Historical backfill in progress..."
+              : backfillStatus?.state === "completed" &&
+                  backfillStatus.indexedEvents === 0
+                ? "No historical events found for this dApp."
               : "No events captured for this dApp yet"}
           </div>
         ) : (
@@ -281,6 +406,16 @@ interface MetricData {
   gasPrice: number;
   txCount: number;
   errorRate: number;
+  uniqueAddresses: number;
+  stylusTxCount: number;
+}
+
+interface MetricAggregateResponse {
+  windowStart: string;
+  avgGasUsed: string;
+  avgGasPrice: string;
+  txCount: number;
+  errorRate: string;
   uniqueAddresses: number;
   stylusTxCount: number;
 }

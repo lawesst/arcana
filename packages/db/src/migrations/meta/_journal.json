@@ -15,6 +15,13 @@
       "when": 1774530742948,
       "tag": "0001_eager_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774538821800,
+      "tag": "0002_sad_spyke",
+      "breakpoints": true
     }
   ]
 }

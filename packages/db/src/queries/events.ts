@@ -32,11 +32,13 @@ export async function insertEventsBatch(
     timestamp: Date;
   }>,
 ) {
-  if (data.length === 0) return;
-  return db
+  if (data.length === 0) return 0;
+  const inserted = await db
     .insert(contractEvents)
     .values(data)
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: contractEvents.id });
+  return inserted.length;
 }
 
 export async function getEvents(

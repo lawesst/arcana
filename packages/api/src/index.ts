@@ -32,7 +32,10 @@ async function main() {
   });
 
   // Plugins
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  });
   await app.register(websocket);
 
   // Database

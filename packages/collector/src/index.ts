@@ -29,7 +29,7 @@ async function main() {
   const blockCollector = new BlockCollector(provider, db);
   const txCollector = new TxCollector(provider, db);
   const eventCollector = new EventCollector(provider, db);
-  const dappBackfiller = new DappBackfiller(provider, db);
+  const dappBackfiller = new DappBackfiller(provider, db, redis);
   const aggregator = new Aggregator(db);
   const alertEvaluator = new AlertEvaluator(db, redis);
   const publisher = new Publisher(redis);

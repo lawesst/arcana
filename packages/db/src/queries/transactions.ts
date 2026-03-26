@@ -44,11 +44,13 @@ export async function insertTransactionsBatch(
     methodId: string | null;
   }>,
 ) {
-  if (data.length === 0) return;
-  return db
+  if (data.length === 0) return 0;
+  const inserted = await db
     .insert(transactions)
     .values(data)
-    .onConflictDoNothing({ target: transactions.txHash });
+    .onConflictDoNothing({ target: transactions.txHash })
+    .returning({ txHash: transactions.txHash });
+  return inserted.length;
 }
 
 export async function getRecentTransactions(
