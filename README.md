@@ -95,12 +95,6 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Local endpoints:
-
-- Dashboard: [http://localhost:3000](http://localhost:3000)
-- API: [http://localhost:3001](http://localhost:3001)
-- Health: [http://localhost:3001/health](http://localhost:3001/health)
-
 ## Useful Scripts
 
 ```bash
