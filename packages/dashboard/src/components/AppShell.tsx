@@ -46,6 +46,7 @@ const navItems: NavItem[] = [
     icon: ShieldAlert,
     mobileLabel: "SECURITY",
   },
+  { label: "Ops", href: "/ops", icon: Settings2, mobileLabel: "OPS" },
   { label: "Registry", href: "/dapps", icon: Layers3, mobileLabel: "REGISTRY" },
 ];
 

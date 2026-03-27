@@ -7,6 +7,7 @@ declare module "fastify" {
     db: Database;
     redisPub: Redis;
     redisSub: Redis;
+    startedAt: Date;
   }
 }
 

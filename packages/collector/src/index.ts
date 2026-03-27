@@ -11,6 +11,10 @@ import { DappBackfiller } from "./collectors/dapp-backfiller";
 import { Aggregator } from "./collectors/aggregator";
 import { AlertEvaluator } from "./collectors/alert-evaluator";
 import { Publisher } from "./publisher";
+import {
+  createCollectorRuntimeStatus,
+  updateCollectorRuntimeStatus,
+} from "./runtime-status-store";
 
 const env = loadEnv();
 
@@ -33,6 +37,13 @@ async function main() {
   const aggregator = new Aggregator(db);
   const alertEvaluator = new AlertEvaluator(db, redis);
   const publisher = new Publisher(redis);
+  const runtimeStatus = await createCollectorRuntimeStatus(redis);
+
+  await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+    state: "starting",
+    collecting: false,
+    lastError: null,
+  });
 
   await redisSub.subscribe(INTERNAL_REDIS_CHANNELS.DAPPS);
   redisSub.on("message", (channel: string, message: string) => {
@@ -80,18 +91,59 @@ async function main() {
   let lastProcessedBlock = await blockCollector.getStartBlock();
   console.log(`[arcana:collector] Starting from block ${lastProcessedBlock}`);
 
+  await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+    state: "idle",
+    latestIndexedBlock: lastProcessedBlock > 0 ? lastProcessedBlock - 1 : null,
+    nextBlockToProcess: lastProcessedBlock,
+    blockLag: null,
+  });
+
   // ── Main collection loop ──
   let collecting = false;
   async function collectLoop() {
     if (collecting) return; // prevent concurrent runs
     collecting = true;
+    const startedAt = new Date();
+
+    await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+      state: "collecting",
+      collecting: true,
+      lastCollectionStartedAt: startedAt,
+      lastError: null,
+    });
+
     try {
       const currentBlock = await withRetry(
         () => provider.getBlockNumber(),
         "getBlockNumber",
       );
 
-      if (currentBlock <= lastProcessedBlock) return;
+      const latestIndexedBlock =
+        lastProcessedBlock > 0 ? lastProcessedBlock - 1 : null;
+      const idleLag =
+        latestIndexedBlock === null
+          ? null
+          : Math.max(currentBlock - latestIndexedBlock, 0);
+
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        currentChainBlock: currentBlock,
+        latestIndexedBlock,
+        nextBlockToProcess: lastProcessedBlock,
+        blockLag: idleLag,
+      });
+
+      if (currentBlock <= lastProcessedBlock) {
+        await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+          state: "idle",
+          collecting: false,
+          currentChainBlock: currentBlock,
+          latestIndexedBlock,
+          nextBlockToProcess: lastProcessedBlock,
+          blockLag: idleLag,
+          lastCollectionCompletedAt: new Date(),
+        });
+        return;
+      }
 
       const lag = currentBlock - lastProcessedBlock;
       const batchSize =
@@ -132,6 +184,14 @@ async function main() {
         for (const tx of processedTxs) {
           await publisher.publishTransaction(tx);
         }
+
+        await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+          state: "collecting",
+          currentChainBlock: currentBlock,
+          latestIndexedBlock: block.number,
+          nextBlockToProcess: block.number + 1,
+          blockLag: Math.max(currentBlock - block.number, 0),
+        });
       }
 
       console.log(
@@ -139,6 +199,16 @@ async function main() {
       );
 
       lastProcessedBlock = toBlock + 1;
+
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        state: "idle",
+        collecting: false,
+        currentChainBlock: currentBlock,
+        latestIndexedBlock: toBlock,
+        nextBlockToProcess: lastProcessedBlock,
+        blockLag: Math.max(currentBlock - toBlock, 0),
+        lastCollectionCompletedAt: new Date(),
+      });
 
       // Trigger a quick 5m aggregation after collecting so metrics update promptly
       if (totalTxs > 0) {
@@ -151,6 +221,12 @@ async function main() {
       }
     } catch (err) {
       console.log("[arcana:collector] Collection loop error:", err);
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        state: "error",
+        collecting: false,
+        lastCollectionCompletedAt: new Date(),
+        lastError: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       collecting = false;
     }
@@ -173,8 +249,14 @@ async function main() {
 
       // Evaluate alerts after new aggregates
       await alertEvaluator.evaluate();
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastAggregationAt: new Date(),
+      });
     } catch (err) {
       console.error("[arcana:collector] Aggregation error:", err);
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastError: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -191,8 +273,14 @@ async function main() {
           `[arcana:collector] Computed ${results.length} aggregates (1h)`,
         );
       }
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastHourlyAggregationAt: new Date(),
+      });
     } catch (err) {
       console.error("[arcana:collector] Hourly aggregation error:", err);
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastError: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -209,8 +297,14 @@ async function main() {
           `[arcana:collector] Computed ${results.length} aggregates (24h)`,
         );
       }
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastDailyAggregationAt: new Date(),
+      });
     } catch (err) {
       console.error("[arcana:collector] Daily aggregation error:", err);
+      await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+        lastError: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -231,6 +325,10 @@ async function main() {
   process.on("SIGINT", async () => {
     console.log("\n[arcana:collector] Shutting down...");
     clearInterval(pollInterval);
+    await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+      state: "stopped",
+      collecting: false,
+    });
     redis.disconnect();
     redisSub.disconnect();
     process.exit(0);
@@ -239,6 +337,10 @@ async function main() {
   process.on("SIGTERM", async () => {
     console.log("\n[arcana:collector] Shutting down...");
     clearInterval(pollInterval);
+    await updateCollectorRuntimeStatus(redis, runtimeStatus, {
+      state: "stopped",
+      collecting: false,
+    });
     redis.disconnect();
     redisSub.disconnect();
     process.exit(0);

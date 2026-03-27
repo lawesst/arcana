@@ -95,6 +95,14 @@ pnpm db:migrate
 pnpm dev
 ```
 
+### Optional: bootstrap demo dApps into a clean local database
+
+```bash
+pnpm bootstrap:local
+```
+
+This starts local infra, runs migrations, and seeds the monitored Stylus dApps only when the registry is empty.
+
 ## Staging Deployment
 
 Arcana can be deployed as a multi-container staging stack with Docker Compose.
@@ -140,11 +148,13 @@ pnpm staging:down
 
 ```bash
 pnpm dev              # collector + api + dashboard
+pnpm bootstrap:local  # start infra, migrate, and seed monitored dApps if the registry is empty
 pnpm dev:collector    # collector only
 pnpm dev:api          # api only
 pnpm dev:dashboard    # dashboard only
 pnpm build            # build all packages
 pnpm lint             # typecheck all packages
+pnpm db:seed:monitored # seed the monitored Stylus dApps explicitly
 pnpm staging:up       # build and start the staging docker-compose stack
 pnpm staging:down     # stop the staging docker-compose stack
 pnpm staging:logs     # tail staging service logs

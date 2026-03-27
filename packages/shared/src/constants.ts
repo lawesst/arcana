@@ -44,6 +44,7 @@ export const INTERNAL_REDIS_CHANNELS = {
 /** Internal Redis key prefixes for shared service state */
 export const INTERNAL_REDIS_KEYS = {
   BACKFILL_STATUS_PREFIX: "arcana:internal:backfill-status:",
+  COLLECTOR_STATUS: "arcana:internal:collector-status",
 } as const;
 
 /** Default collector settings */

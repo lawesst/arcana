@@ -14,6 +14,7 @@ import { registerEventRoutes } from "./routes/events";
 import { registerStylusRoutes } from "./routes/stylus";
 import { registerSearchRoutes } from "./routes/search";
 import { registerWsRoutes } from "./routes/ws";
+import { registerSystemRoutes } from "./routes/system";
 
 const env = loadEnv();
 
@@ -49,6 +50,7 @@ async function main() {
   app.decorate("db", db);
   app.decorate("redisPub", redisPub);
   app.decorate("redisSub", redisSub);
+  app.decorate("startedAt", new Date());
 
   // Routes
   registerHealthRoutes(app);
@@ -60,6 +62,7 @@ async function main() {
   registerEventRoutes(app);
   registerStylusRoutes(app);
   registerSearchRoutes(app);
+  registerSystemRoutes(app);
   registerWsRoutes(app);
 
   // Start server

@@ -9,6 +9,7 @@
     "generate": "drizzle-kit generate",
     "migrate": "tsx src/migrate.ts",
     "seed:e2e": "tsx src/scripts/seed-e2e.ts",
+    "seed:monitored": "tsx src/scripts/seed-monitored-dapps.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

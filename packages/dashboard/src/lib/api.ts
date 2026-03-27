@@ -224,6 +224,11 @@ export async function fetchSearch(query: string) {
   }>(`/api/search?q=${encodeURIComponent(query)}`);
 }
 
+// ── Ops ──
+export async function fetchSystemStatus() {
+  return fetchApi<{ success: boolean; data: SystemStatus }>("/api/system/status");
+}
+
 // ── Types ──
 interface DApp {
   id: string;
@@ -246,6 +251,65 @@ export interface BackfillStatus {
   indexedEvents: number;
   message: string | null;
   error: string | null;
+}
+
+export interface CollectorRuntimeStatus {
+  service: "arcana-collector";
+  state: "starting" | "idle" | "collecting" | "error" | "stopped";
+  startedAt: string;
+  updatedAt: string;
+  currentChainBlock: number | null;
+  latestIndexedBlock: number | null;
+  nextBlockToProcess: number | null;
+  blockLag: number | null;
+  collecting: boolean;
+  lastCollectionStartedAt: string | null;
+  lastCollectionCompletedAt: string | null;
+  lastAggregationAt: string | null;
+  lastHourlyAggregationAt: string | null;
+  lastDailyAggregationAt: string | null;
+  lastError: string | null;
+}
+
+export interface SystemStatus {
+  generatedAt: string;
+  api: {
+    status: "ok";
+    startedAt: string;
+    uptimeSeconds: number;
+  };
+  database: {
+    status: "ok" | "error";
+    latestBlockNumber: number | null;
+    latestBlockTimestamp: string | null;
+    blockCount: number | null;
+    latestTransactionAt: string | null;
+    error: string | null;
+  };
+  redis: {
+    status: "ok" | "error";
+    error: string | null;
+  };
+  collector: {
+    status: "healthy" | "stale" | "missing" | "error";
+    staleThresholdMs: number;
+    secondsSinceUpdate: number | null;
+    runtime: CollectorRuntimeStatus | null;
+    error?: string | null;
+  };
+  dapps: {
+    monitored: number | null;
+  };
+  backfills: {
+    total: number;
+    active: number;
+    queued: number;
+    scanning: number;
+    syncing: number;
+    completed: number;
+    failed: number;
+    latestUpdatedAt: string | null;
+  };
 }
 
 interface MetricAggregate {

@@ -123,6 +123,32 @@ export interface BackfillStatus {
   error: string | null;
 }
 
+/** Collector runtime state shared through Redis for operational visibility */
+export type CollectorRuntimeState =
+  | "starting"
+  | "idle"
+  | "collecting"
+  | "error"
+  | "stopped";
+
+export interface CollectorRuntimeStatus {
+  service: "arcana-collector";
+  state: CollectorRuntimeState;
+  startedAt: Date;
+  updatedAt: Date;
+  currentChainBlock: number | null;
+  latestIndexedBlock: number | null;
+  nextBlockToProcess: number | null;
+  blockLag: number | null;
+  collecting: boolean;
+  lastCollectionStartedAt: Date | null;
+  lastCollectionCompletedAt: Date | null;
+  lastAggregationAt: Date | null;
+  lastHourlyAggregationAt: Date | null;
+  lastDailyAggregationAt: Date | null;
+  lastError: string | null;
+}
+
 /** WebSocket message types for real-time updates */
 export type WsMessageType =
   | "metric_update"
